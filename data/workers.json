@@ -1,0 +1,271 @@
+{
+  "people": [
+    {
+      "name": "Takahashi_chef",
+      "role": "chef",
+      "headcount_only": true,
+      "fixed_days_off": ["Mon"],
+      "ad_hoc_unavailable": ["2025-11-12"],  
+      "notes": "主廚A",
+      "wish_off": {
+        "hard": ["2025/11/11"], 
+        "soft": []},             
+      "special_leave_days": []
+    },
+    {
+      "name": "Funatsu",
+      "role": "chef",
+      "headcount_only": true,
+      "fixed_days_off": [],
+      "ad_hoc_unavailable": [],
+      "notes": "主廚B",
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": []
+    },
+
+    {
+      "name": "Masuda",
+      "role": "employee",
+      "skills": ["decor", "knife", "glaze"],
+      "station_skills": ["GATEAU", "glaze_and_fruit","mise_en_place"],
+      "shift_prefs": ["1", "2", "A"],           
+      "max_days_per_week": 5,
+      "min_days_per_week": 3,
+      "max_consecutive_days": 5,
+      "fixed_days_off": ["Tue"],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": [],
+      "core": true
+    },
+    {
+      "name": "Spencer",
+      "role": "employee",
+      "skills": ["prep", "oven"],
+      "station_skills": ["mise_en_place"],
+      "shift_prefs": ["C","D","3","4"],
+      "max_days_per_week": 4,
+      "min_days_per_week": 2,
+      "max_consecutive_days": 4,
+      "fixed_days_off": [],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": [],
+      "core": true
+    },
+    {
+      "name": "Chung",
+      "role": "employee",
+      "skills": ["petit_four", "decor"],
+      "station_skills": ["mise_en_place","glaze_and_fruit"],
+      "shift_prefs": ["C","D","3","4"],      
+      "max_days_per_week": 3,                   
+      "min_days_per_week": 0,
+      "max_consecutive_days": 3,
+      "fixed_days_off": ["Sun"],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": [],
+      "core": true
+    },
+    {
+      "name": "Ishikawa",
+      "role": "employee",
+      "skills": ["fruit", "glaze","mise_en_place"],         
+      "station_skills": ["glaze_and_fruit","mise_en_place","GATEAU"],
+      "shift_prefs": [],
+      "max_days_per_week": 5,
+      "min_days_per_week": 3,
+      "max_consecutive_days": 5,
+      "fixed_days_off": [],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": [],
+      "core": true
+    
+    },
+
+    {
+      "name": "Mochizuki",
+      "role": "employee",
+      "skills": ["prep"],
+      "station_skills": ["mise_en_place","glaze_and_fruit","GATEAU"],
+      "shift_prefs": [],
+      "max_days_per_week": 2,
+      "min_days_per_week": 0,
+      "max_consecutive_days": 2,
+      "fixed_days_off": [],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": ["2025/11/12"], 
+        "soft": []},    
+      "special_leave_days": [],
+      "core": true
+    },
+    
+    {
+      "name": "Takai",
+      "role": "employee",
+      "skills": ["prep"],
+      "station_skills": ["mise_en_place","glaze_and_fruit","GATEAU"],
+      "shift_prefs": [],
+      "max_days_per_week": 2,
+      "min_days_per_week": 0,
+      "max_consecutive_days": 2,
+      "fixed_days_off": [],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": [],
+      "core": true
+    },
+    
+    {
+      "name": "Tarutani",
+      "role": "employee",
+      "skills": ["prep"],
+      "station_skills": ["mise_en_place","GATEAU"],
+      "shift_prefs": [],
+      "max_days_per_week": 2,
+      "min_days_per_week": 0,
+      "max_consecutive_days": 2,
+      "fixed_days_off": [],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": []
+    },
+
+    {
+      "name": "Komura",
+      "role": "employee",
+      "skills": ["prep"],
+      "station_skills": ["mise_en_place","petit_four"],
+      "shift_prefs": [],
+      "max_days_per_week": 2,
+      "min_days_per_week": 0,
+      "max_consecutive_days": 2,
+      "fixed_days_off": [],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": []
+    },
+
+    {
+      "name": "Kim",
+      "role": "employee",
+      "skills": ["prep"],
+      "station_skills": ["mise_en_place","petit_four"],
+      "shift_prefs": [],
+      "max_days_per_week": 2,
+      "min_days_per_week": 0,
+      "max_consecutive_days": 2,
+      "fixed_days_off": [],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": []
+    },
+
+    {
+      "name": "Sera",
+      "role": "employee",
+      "skills": ["prep"],
+      "station_skills": ["mise_en_place","petit_four"],
+      "shift_prefs": [],
+      "max_days_per_week": 2,
+      "min_days_per_week": 0,
+      "max_consecutive_days": 2,
+      "fixed_days_off": [],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": []
+    },
+
+    {
+      "name": "Miyazawa",
+      "role": "employee",
+      "skills": ["prep"],
+      "station_skills": ["mise_en_place","petit_four"],
+      "shift_prefs": [],
+      "max_days_per_week": 2,
+      "min_days_per_week": 0,
+      "max_consecutive_days": 2,
+      "fixed_days_off": [],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": []
+    },
+
+    {
+      "name": "Kabasawa",
+      "role": "employee",
+      "skills": ["prep"],
+      "station_skills": ["mise_en_place"],
+      "shift_prefs": ["C","D","3","4"],
+      "max_days_per_week": 2,
+      "min_days_per_week": 0,
+      "max_consecutive_days": 2,
+      "fixed_days_off": [],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": []
+    },
+
+    {
+      "name": "Mizuno",
+      "role": "part-time",
+      "skills": ["prep"],
+      "station_skills": ["mise_en_place"],
+      "shift_prefs": ["C","D","3","4"],
+      "max_days_per_week": 2,
+      "min_days_per_week": 0,
+      "max_consecutive_days": 2,
+      "fixed_days_off": [],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": []
+    },
+ 
+   {
+      "name": "Kunitsu",
+      "role": "part-time",
+      "skills": ["prep"],
+      "station_skills": ["mise_en_place"],
+      "shift_prefs": ["D"],
+      "max_days_per_week": 2,
+      "min_days_per_week": 0,
+      "max_consecutive_days": 2,
+      "fixed_days_off": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+      "ad_hoc_unavailable": [],
+      "wish_off": {
+        "hard": [], 
+        "soft": []},    
+      "special_leave_days": []
+    }
+ 
+  ]
+}

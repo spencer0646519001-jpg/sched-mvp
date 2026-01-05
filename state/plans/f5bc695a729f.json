@@ -1,0 +1,57 @@
+{
+  "date": "2025-11-10",
+  "is_holiday": false,
+  "chefs_present": [
+    "Takahashi_chef",
+    "Funatsu"
+  ],
+  "headcount_total": 9,
+  "assignments": {
+    "GATEAU": [
+      {
+        "name": "Ishikawa",
+        "shift": "B"
+      }
+    ],
+    "petit_four": [
+      {
+        "name": "Komura",
+        "shift": "A"
+      },
+      {
+        "name": "Kim",
+        "shift": "A"
+      }
+    ],
+    "glaze_and_fruit": [
+      {
+        "name": "Masuda",
+        "shift": "A"
+      },
+      {
+        "name": "Chung",
+        "shift": "C"
+      }
+    ],
+    "mise_en_place": [
+      {
+        "name": "Spencer",
+        "shift": "C"
+      },
+      {
+        "name": "Mochizuki",
+        "shift": "A"
+      }
+    ]
+  },
+  "hours_estimate": {
+    "Komura": 9.0,
+    "Masuda": 9.0,
+    "Spencer": 9.0,
+    "Ishikawa": 8.0,
+    "Kim": 9.0,
+    "Chung": 9.0,
+    "Mochizuki": 9.0
+  },
+  "warnings": []
+}

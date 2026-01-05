@@ -1,0 +1,24 @@
+{
+  "timezone": "Asia/Tokyo",
+  "days": [
+    { "date": "2025-11-08", "is_weekend": true,  "events": [] },
+    { "date": "2025-11-09", "is_weekend": true,  "events": [] },
+    { "date": "2025-11-10", "is_weekend": false, "events": [] },
+
+    { "date": "2025-11-15", "is_weekend": true,  "events": [
+      { "type": "pop_up", "note": "百貨快閃", "station_boost": { "GATEAU": 1, "glaze_and_fruit": 1 } }
+    ]},
+
+    { "date": "2025-11-20", "is_weekend": false, "events": [
+      { "type": "chef_meeting", "note": "主廚會議", "chefs_present": 1 }
+    ]},
+    
+    { "holidays": [
+    "2025-11-03",
+    "2025-12-31"
+    ],
+    "notes": "可自由增減"
+    }
+
+  ]
+}

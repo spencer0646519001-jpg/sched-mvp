@@ -1,0 +1,36 @@
+{
+  "min_staff_weekday": 7,
+  "min_staff_weekend": 8,
+  "max_staff_per_day": 9,
+  "special_leave_policy": "hard",       
+  "special_leave_soft_penalty": 3.0,
+  "wish_day_off_penalty_reduction": 0.8,
+  "min_rest_days_per_month": 9,
+  "max_overtime_hours_per_month": 45,
+  "hard_limit_overtime_hours": 75,
+  "max_consecutive_days": 4,
+
+  "stations": {
+  "GATEAU": 1,
+  "petit_four": 2,
+  "glaze_and_fruit": 2,
+  "mise_en_place": 2
+},
+  "require_one_chef": true,
+  "count_chefs_in_headcount": true,       
+  "chefs_have_no_shift": true,              
+  "default_paid_break_minutes": 60,        
+  "overtime_threshold_daily_hours": 8.0,  
+  "allow_fallback_when_short": true,
+  "fallback_penalty": 1.0 ,
+  "enforce_hard_off": true,
+  "soft_off_penalty": 2.5,
+  "core_members": ["Takai", "Masuda", "Spencer", "Ishikawa"],
+  "morning_shifts": ["A", "B", "1", "2"],
+  "stations_require_morning": {
+    "GATEAU": 1,
+    "petit_four": 1, 
+    "glaze_and_fruit": 1
+   
+}
+}
