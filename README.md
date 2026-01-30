@@ -1,288 +1,197 @@
-Sched-MVP – AI-Driven Pastry Kitchen Scheduling System
+# Sched MVP — Explainable Kitchen Scheduling Engine
 
-Author: Spencer
-Tech Stack: Python, FastAPI, LLM, Rule Engine
-Status: Active Development – Usable MVP
+**Sched MVP** is a working engineering MVP for an **explainable staff scheduling engine** designed for professional pastry kitchens.
 
-🎯 Project Purpose
+Instead of focusing on UI polish or heavy optimization, this project prioritizes:
 
-Sched-MVP is a production-grade scheduling engine designed specifically for professional pastry kitchens.
+- **correctness**
+- **traceability**
+- **explainability of scheduling decisions**
 
-The goal is to replace manual scheduling with:
+It serves as a solid technical foundation for future AI-assisted scheduling systems.
 
-a rules engine (hard + soft constraints),
+---
 
-natural language editing powered by LLMs,
+## Project Overview
 
-persistent plan storage + modifications,
+In real pastry kitchens:
 
-and upcoming full web deployment.
+- staff rotate between stations
+- skill distribution is uneven
+- absences and constraints are common
+- fallback assignments are sometimes unavoidable
 
-Unlike academic timetabling demos, Sched-MVP targets real kitchen constraints:
-people rotate stations, skill distributions are uneven, holidays matter, and kitchen throughput depends on correct assignments.
+Sched MVP makes these trade-offs **explicit and auditable**, rather than hiding them inside opaque logic or heuristics.
 
-🧩 Core Features
-✔ Automatic daily schedule generation
+The goal is not to claim “optimal schedules”, but to clearly answer:
 
-Based on:
+> *Why was this person assigned here, and what constraints influenced that decision?*
 
-employee skills
+---
 
-station requirements
+## Key Capabilities
 
-shift priority
+### Daily Station Assignment
+- skill-aware
+- absence-aware
+- rule-driven (greedy engine)
+- deterministic and reproducible
 
-fallback logic
+### Explainable Decisions
+- step-by-step decision trace
+- per-station explanations
+- summary metrics (fallback usage, missing skills, coverage gaps)
 
-business rules
+### Data-Driven Configuration
+- no hard-coded stations or staff
+- all configuration managed via **Django Admin**
+- easy to adapt to different kitchens
 
-✔ Full week/month schedule support
+### Minimal Demo UI
+- API driver only
+- intended for testing and inspection
+- full JSON output visibility
 
-CSV exports available for:
+---
 
-7-day week
+## Tech Stack
 
-full month
+- Python 3.11+
+- Django (API + Admin)
+- LangGraph (decision flow & explainability)
+- SQLite (local development)
+- JSON-based rules & constraints
 
-✔ Persistent plan storage
+---
 
-Each plan is stored and referenced by a plan_id.
+## Quick Start
 
-✔ Natural language shift editing (LLM interface)
 
-Example input:
-“Move Spencer to GATEAU shift A”
-→ validated, patched, and stored.
-
-✔ JSON-based rule configuration:
-
-overtime limits
-
-soft off penalties
-
-required station coverage
-
-priority workers
-
-shift preferences
-
-weekend staffing levels
-
-✔ Future planned upgrades:
-
-LangGraph rule editing UI
-
-FastAPI → Next.js front end
-
-Docker deployment
-
-Role-based access control
-
-More advanced optimization model
-
-📂 Project Structure
-sched-mvp/
-│
-├── app/
-│   ├── main.py                # FastAPI entrypoint
-│   ├── generate_day.py        # Core day scheduler
-│   ├── generate_week.py       # 7-day planner + CSV
-│   ├── generate_month.py      # Month planner + CSV
-│   ├── week_utils.py          # cross-day constraints
-│   ├── plan_service.py        # business logic layer
-│   ├── api_llm_patch.py       # API routing layer
-│   ├── llm_parser.py          # language → structured patch
-│   ├── plan_store.py          # persistent storage engine
-│   └── ...
-│
-├── data/
-│   ├── workers.json
-│   ├── shifts.json
-│   ├── rules.json
-│   ├── calendar.json
-│   └── ...
-│
-├── week.csv                   # optional exported result
-├── requirements.txt
-└── README.md
-
-🛠 Installation
-Requirements:
-
-Python 3.11+
-
-Setup:
 python -m venv .venv
-.\.venv\Scripts\activate
+# Windows
+.venv\Scripts\activate
 
 pip install -r requirements.txt
 
-🚀 Backend Usage
-Start the development server
-uvicorn app.main:app --reload
+python manage.py migrate
+python manage.py runserver
+Server will be available at:
 
 
-Server URL:
+http://127.0.0.1:8000/
+Entry Points
+1) Django Admin (Data Setup)
 
-http://127.0.0.1:8000
+http://127.0.0.1:8000/admin/
+Used to manage:
 
-🔌 API Overview
+Tenants
 
-Sched-MVP provides production-ready scheduling endpoints.
+Employees
 
-1️⃣ Create a base daily plan
+Stations
 
-POST /api/plan/create
+Employee–Station skills
 
-Request:
+All scheduling logic depends on this data.
+No station names or assignments are hard-coded.
 
-{ "date": "2025-11-10" }
+2) Simple UI (API Driver / Demo)
 
+http://127.0.0.1:8000/api/ui/
+Purpose:
 
-Response:
+trigger daily scheduling
+
+preview JSON output
+
+inspect engine behavior without external tools
+
+3) Scheduling API (Graph-Based Engine)
+POST
+
+/api/tenants/demo_kitchen/daily-runs-graph/
+Example request body:
+
 
 {
-  "plan_id": "xxxxx",
-  "date": "2025-11-10",
-  "plan": { ... }
+  "date": "2026-01-06",
+  "absent": ["Kim", "Spencer"]
 }
+Response includes:
 
-2️⃣ Retrieve a saved plan
+out — final station assignments
 
-GET /api/plan/get?plan_id=XXXX
+decision_trace — engine decision steps
 
-3️⃣ Preview a natural language patch
+explanations — human-readable reasoning
 
-POST /api/plan/patch_preview
+metrics — high-level summary signals
 
-Request:
+Project Structure (Simplified)
 
-{
-  "plan_id": "xxxx",
-  "text": "Move Spencer to GATEAU A shift"
-}
+sched-mvp/
+├── app/
+│   ├── generate_day.py        # core scheduling logic
+│   ├── generate_week.py       # week planner
+│   ├── generate_month.py      # month planner
+│   ├── langgraph_flow.py      # graph + explanation nodes
+│   └── ...
+├── core/
+│   ├── models.py              # Django models
+│   ├── api_views.py           # API endpoints
+│   ├── admin.py               # Admin configuration
+│   └── ui_views.py            # minimal UI
+├── graph/
+│   └── state.py / nodes/      # LangGraph state & nodes
+├── config/
+│   └── urls.py / settings.py
+└── README.md
+Why Explainability Matters
+Fallback assignments and suboptimal decisions are inevitable in real-world operations.
 
+This MVP ensures that:
 
-Response returns:
+every assignment can be explained
 
-parsed patch
+missing skills are visible
 
-before assignments
+trade-offs are measurable
 
-after assignments
+Explainability is essential for:
 
-4️⃣ Apply patch permanently
+operational trust
 
-POST /api/plan/patch_apply
+debugging rules
 
-Request:
+future AI assistance
 
-{
-  "plan_id": "xxxx",
-  "text": "Move Spencer to GATEAU A shift"
-}
+safe automation
 
+Current Status
+✅ Daily scheduling engine
 
-On success:
+✅ Explainable decision trace & metrics
 
-{ "success": true, "saved": true }
+✅ Django Admin for configuration
 
-5️⃣ Week + Month generation
-Generate full week:
-python -m app.generate_week 2025-11-10
+✅ Minimal UI for demo
 
-Export CSV:
-/api/week_csv?start_date=YYYY-MM-DD
+Planned (future):
 
-📅 Data Definition Overview
-workers.json example:
-{
-  "name": "Masuda",
-  "role": "employee",
-  "skills": ["decor", "knife", "glaze"],
-  "station_skills": ["GATEAU", "glaze_and_fruit", "mise_en_place"],
-  "shift_prefs": ["1", "2", "A"],
-  "max_days_per_week": 5,
-  "min_days_per_week": 3,
-  "fixed_days_off": ["Tue"]
-}
+⏳ Advanced optimization models
 
+⏳ LLM-assisted rule editing
 
-Notes:
+⏳ Rich web UI
 
-shift_prefs are soft preferences
+Disclaimer
+This repository represents a working engineering MVP, not a final product.
 
-the system will override preferences if necessary
+Design choices intentionally favor:
 
-🧠 Rules Engine Design
+clarity over complexity
 
-Example from rules.json:
+explainability over optimization
 
-{
-  "fallback_penalty": 1.0,
-  "soft_off_penalty": 2.5,
-  "max_consecutive_days": 4,
-  "stations": {
-    "GATEAU": 1,
-    "petit_four": 2
-  }
-}
-
-
-Sched-MVP does not simply assign randomly:
-assignments are scored, optimized, and validated.
-
-🧱 Architectural Layers
-FastAPI (Routing)
-   ↓
-plan_service (Business logic)
-   ↓
-generate_day (Scheduling Algorithms)
-   ↓
-JSON rules + worker configs
-
-🔮 Future Development Roadmap
-Phase 2 – After MVP
-
-Full web UI (Next.js)
-
-Drag-and-drop schedule editing
-
-Manager permissions
-
-Phase 3 – LangGraph
-
-Rule editing through natural language
-
-Explaining penalties and decisions
-
-Phase 4 – Optimization model
-
-genetic / ILP solver upgrades
-
-multi-objective cost analysis
-
-🌟 Why This Project Matters
-
-Commercial kitchens suffer from:
-
-unpredictable staffing
-
-high training turnover
-
-manual scheduling errors
-
-lack of rule transparency
-
-Sched-MVP aims to:
-
-improve stability
-
-reduce manager workload
-
-formalize knowledge
-
-allow AI-assisted decisions
-
-This is not a toy script.
-It is the foundation of a real industry product.
+correctness over UI completeness
