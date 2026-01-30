@@ -7,6 +7,7 @@ from app.generate_day import (
     build_shift_maps,
 )
 
+
 def main():
     date = "2025-11-10"
     absent = []
@@ -52,7 +53,7 @@ def main():
         "date": date,
         "name": "Kim",
         "station": "petit_four",
-        "shift": "Z"
+        "shift": "Z",
     }
     new_plan, errs = apply_manual_patch(
         base_plan,
@@ -69,7 +70,7 @@ def main():
         "date": date,
         "name": "Nobody",
         "station": "petit_four",
-        "shift": "A"
+        "shift": "A",
     }
     new_plan, errs = apply_manual_patch(
         base_plan,
@@ -81,6 +82,7 @@ def main():
         people,
     )
     print("errors =", errs)
+
 
 if __name__ == "__main__":
     main()

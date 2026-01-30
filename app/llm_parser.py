@@ -25,7 +25,6 @@ class PatchParseResult(BaseModel):
     reasoning: Optional[str] = ""
 
 
-
 SYSTEM_PROMPT = """
 あなたはパティスリーの「シフト調整エージェント」です。
 ユーザーの文章（日本語・中国語・英語）からシフト調整指示を解析し、
@@ -53,11 +52,13 @@ SYSTEM_PROMPT = """
 # ✅ Lazy init：避免 uvicorn import 時就爆炸
 _LLM = None
 
+
 def _get_llm():
     global _LLM
     if _LLM is None:
         # 這裡才 import，避免沒裝 langchain_openai 時讓整個 server 起不來
         from langchain_openai import ChatOpenAI
+
         _LLM = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
     return _LLM
 

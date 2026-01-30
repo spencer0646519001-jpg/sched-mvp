@@ -2,7 +2,13 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
-from app.domain.normalize import canonical_station, canonical_shift, ALLOWED_STATIONS, ALLOWED_SHIFTS
+from app.domain.normalize import (
+    canonical_station,
+    canonical_shift,
+    ALLOWED_STATIONS,
+    ALLOWED_SHIFTS,
+)
+
 
 def build_canonical_patch(
     *,
@@ -38,7 +44,7 @@ def build_canonical_patch(
         return None, errors
 
     patch = {
-        "date": plan_date,     # date 永遠用 plan 的，不信任 LLM
+        "date": plan_date,  # date 永遠用 plan 的，不信任 LLM
         "name": name,
         "station": station,
         "shift": shift,

@@ -19,6 +19,7 @@ STATION_SYNONYMS = {
     "mise_en_place": "mise_en_place",
 }
 
+
 def canonical_station(raw: str) -> str:
     if raw is None:
         return ""
@@ -27,11 +28,13 @@ def canonical_station(raw: str) -> str:
         return STATION_SYNONYMS[s]
     return s.lower()
 
+
 def canonical_shift(raw: str) -> str:
     if raw is None:
         return ""
     s = str(raw).strip()
     return s.upper()
+
 
 def normalize_engine_assignments(
     assignments: Dict[str, Any],
@@ -49,48 +52,58 @@ def normalize_engine_assignments(
     normalized: Dict[str, List[dict]] = {}
 
     if not isinstance(assignments, dict):
-        return {}, [{"type": "invalid_assignments_type", "value": type(assignments).__name__}]
+        return {}, [
+            {"type": "invalid_assignments_type", "value": type(assignments).__name__}
+        ]
 
     for station_raw, items in assignments.items():
         station = canonical_station(station_raw)
 
         if station not in ALLOWED_STATIONS:
-            errors.append({
-                "type": "invalid_station",
-                "value": station_raw,
-                "canonical": station,
-            })
+            errors.append(
+                {
+                    "type": "invalid_station",
+                    "value": station_raw,
+                    "canonical": station,
+                }
+            )
             continue
 
         if not isinstance(items, list):
-            errors.append({
-                "type": "invalid_station_items_type",
-                "station": station,
-                "value": type(items).__name__,
-            })
+            errors.append(
+                {
+                    "type": "invalid_station_items_type",
+                    "station": station,
+                    "value": type(items).__name__,
+                }
+            )
             continue
 
         out_items: List[dict] = []
         for it in items:
             if not isinstance(it, dict):
-                errors.append({
-                    "type": "invalid_assignment_item_type",
-                    "station": station,
-                    "value": type(it).__name__,
-                })
+                errors.append(
+                    {
+                        "type": "invalid_assignment_item_type",
+                        "station": station,
+                        "value": type(it).__name__,
+                    }
+                )
                 continue
 
             shift_raw = it.get("shift")
             shift = canonical_shift(shift_raw)
 
             if shift not in ALLOWED_SHIFTS:
-                errors.append({
-                    "type": "invalid_shift",
-                    "station": station,
-                    "name": it.get("name"),
-                    "value": shift_raw,
-                    "canonical": shift,
-                })
+                errors.append(
+                    {
+                        "type": "invalid_shift",
+                        "station": station,
+                        "name": it.get("name"),
+                        "value": shift_raw,
+                        "canonical": shift,
+                    }
+                )
                 continue
 
             out_items.append({**it, "shift": shift})
