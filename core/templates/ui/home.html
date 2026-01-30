@@ -18,7 +18,8 @@
 
 <body>
   <h1>Sched MVP – Generate Daily Run</h1>
-  <p class="hint">POST to <code>/api/tenants/demo_kitchen/daily-runs/</code></p>
+  <p class="hint">POST to <code>/api/tenants/demo_kitchen/daily-runs-graph/</code></p>
+
 
   <div class="row">
     <label for="date">Date (YYYY-MM-DD)</label>
@@ -86,7 +87,7 @@
 
     try {
       // IMPORTANT: absolute path (avoid /api/ui/... relative bugs)
-      const data = await postJSON("/api/tenants/demo_kitchen/daily-runs/", { date, absent });
+      const data = await postJSON("/api/tenants/demo_kitchen/daily-runs-graph/", { date, absent });
       $("out").textContent = JSON.stringify(data, null, 2);
       $("status").textContent = "OK";
     } catch (e) {

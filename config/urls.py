@@ -20,11 +20,7 @@ from django.contrib import admin
 from django.urls import path, include
 
 urlpatterns = [
+    path("", include("core.ui_urls")),     # UI 首頁
     path("admin/", admin.site.urls),
-
-    # API routes
     path("api/", include("core.api_urls")),
-
-    # UI routes (放在 api/ui/ 下面也可以)
-    path("api/ui/", include("core.ui_urls")),
 ]
