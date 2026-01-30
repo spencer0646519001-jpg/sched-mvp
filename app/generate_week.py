@@ -17,6 +17,7 @@ from app.week_utils import pick_chefs_for_day, CHEF_LIST
 import csv
 from pathlib import Path
 
+
 def load_rules():
     rules_file = Path(__file__).parent.parent / "data" / "rules.json"
     if not rules_file.exists():
@@ -43,12 +44,9 @@ def init_week_state(people: List[dict]) -> dict:
         "days_off": {n: 0 for n in names},
         "consecutive_days": {n: 0 for n in names},
         "weekly_hours": {n: 0.0 for n in names},
-
         "shift_count": {
-            n: {"A": 0, "D": 0, "1": 0, "2": 0, "3": 0, "4": 0}
-            for n in names
+            n: {"A": 0, "D": 0, "1": 0, "2": 0, "3": 0, "4": 0} for n in names
         },
-
         "week_plan": {},  # date_str -> plan
     }
 
@@ -137,19 +135,17 @@ def generate_week(
     # 4) 建立日期清單：連續 num_days 天
     start_date = dtparser.parse(start_date_str).date()
     days: List[str] = [
-        (start_date + timedelta(days=i)).isoformat()
-        for i in range(num_days)
+        (start_date + timedelta(days=i)).isoformat() for i in range(num_days)
     ]
 
     # 5) 主迴圈：逐日呼叫 greedy_assign
     for date_str in days:
         # 5-1) 員工強制休息（不包含主廚）
         forced_rest = [
-        name
-        for name, consec in state["consecutive_days"].items()
-        if consec >= max_consec_days and name not in CHEF_LIST
-]
-
+            name
+            for name, consec in state["consecutive_days"].items()
+            if consec >= max_consec_days and name not in CHEF_LIST
+        ]
 
         # 5-2) 先讓 greedy_assign 根據 absent 生成人員與站位（不含主廚）
         day_plan = gd.greedy_assign(date_str, absent=forced_rest)
@@ -165,7 +161,7 @@ def generate_week(
             is_holiday=is_holiday,
             state=state,
             all_chefs=CHEF_LIST,
-            max_days_per_week=5,   # 一週最多 5 天（仍以「這週」為單位）
+            max_days_per_week=5,  # 一週最多 5 天（仍以「這週」為單位）
         )
 
         day_plan["chefs_present"] = chefs_present
@@ -183,6 +179,7 @@ def generate_week(
 # -------- 簡單週總結（方便人眼檢查） --------
 
 from typing import Dict
+
 
 def summarize_week(state: dict) -> Dict[str, dict]:
     """
@@ -204,6 +201,7 @@ def summarize_week(state: dict) -> Dict[str, dict]:
             "hours": float(weekly_hours[name]),
         }
     return summary
+
 
 def print_week_summary(state: dict, start_date_str: str, num_days: int) -> None:
     print(f"\n=== Week summary from {start_date_str} for {num_days} days ===")
@@ -233,19 +231,29 @@ def save_week_csv(state: dict, out_path="week.csv"):
     for date, plan in state["week_plan"].items():
         for station, assignments in plan["assignments"].items():
             for rec in assignments:
-                rows.append({
-                    "date": date,
-                    "station": station,
-                    "name": rec["name"],
-                    "shift": rec["shift"],
-                    "shift_hours": plan["hours_estimate"].get(rec["name"], 0),
-                    "chef_present": ",".join(plan["chefs_present"])
-                })
+                rows.append(
+                    {
+                        "date": date,
+                        "station": station,
+                        "name": rec["name"],
+                        "shift": rec["shift"],
+                        "shift_hours": plan["hours_estimate"].get(rec["name"], 0),
+                        "chef_present": ",".join(plan["chefs_present"]),
+                    }
+                )
 
     with open(out_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=[
-            "date", "station", "name", "shift", "shift_hours", "chef_present"
-        ])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "date",
+                "station",
+                "name",
+                "shift",
+                "shift_hours",
+                "chef_present",
+            ],
+        )
         writer.writeheader()
         writer.writerows(rows)
 

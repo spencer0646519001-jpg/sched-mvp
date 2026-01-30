@@ -93,9 +93,9 @@ def summarize_month(month_plan: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
     return summary
 
 
-def save_month_json(year_month: str,
-                    month_plan: Dict[str, Any],
-                    summary: Dict[str, Dict[str, float]]) -> Path:
+def save_month_json(
+    year_month: str, month_plan: Dict[str, Any], summary: Dict[str, Dict[str, float]]
+) -> Path:
     """
     將整月排班結果 + 總結輸出成 JSON 檔：
       month_2025-11.json
@@ -115,16 +115,15 @@ def save_month_json(year_month: str,
     return out_path
 
 
-def print_month_summary(year_month: str,
-                        summary: Dict[str, Dict[str, float]]) -> None:
+def print_month_summary(year_month: str, summary: Dict[str, Dict[str, float]]) -> None:
     """
     在 Terminal 印出簡單的整月總結（類似 WEEK_STATE_SUMMARY 風格）。
     """
     print("[MONTH_STATE_SUMMARY]")
     print(f"\n=== Month summary for {year_month} ===")
-    for name, stats in sorted(summary.items(),
-                              key=lambda kv: kv[1]["hours"],
-                              reverse=True):
+    for name, stats in sorted(
+        summary.items(), key=lambda kv: kv[1]["hours"], reverse=True
+    ):
         days = stats["days"]
         hours = stats["hours"]
         print(f"  - {name}: worked={days} days, hours={hours:.1f}h")
