@@ -26,7 +26,7 @@ def get_week(
     week_state = generate_week(
         start_date_str=start_date,
         num_days=days,
-        prev_state=None,   # 之後要接跨週狀態時可以再打開
+        prev_state=None,  # 之後要接跨週狀態時可以再打開
     )
     return week_state["week_plan"]
 
@@ -75,20 +75,20 @@ def get_week_csv(
 
         for station, recs in assignments.items():
             for rec in recs:
-                writer.writerow([
-                    date_str,
-                    station,
-                    rec["name"],
-                    rec["shift"],
-                    chefs,
-                ])
+                writer.writerow(
+                    [
+                        date_str,
+                        station,
+                        rec["name"],
+                        rec["shift"],
+                        chefs,
+                    ]
+                )
 
     buf.seek(0)
 
     filename = f"week_{start_date}.csv"
-    headers = {
-        "Content-Disposition": f'attachment; filename="{filename}"'
-    }
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
 
     return StreamingResponse(
         buf,
@@ -100,6 +100,7 @@ def get_week_csv(
 # ------------------------------------------------------------
 # 整月排班工具：用 generate_week 分段跑完整個月
 # ------------------------------------------------------------
+
 
 def _generate_month_state(start_date_str: str) -> dict:
     """
@@ -118,8 +119,8 @@ def _generate_month_state(start_date_str: str) -> dict:
     cur = month_start
     prev_state: dict | None = None
 
-    month_plan: dict = {}           # date_str -> day_plan
-    summary_total: dict = {}        # name -> {"days": int, "hours": float}
+    month_plan: dict = {}  # date_str -> day_plan
+    summary_total: dict = {}  # name -> {"days": int, "hours": float}
 
     while cur <= month_end:
         days_left = (month_end - cur).days + 1
@@ -135,9 +136,7 @@ def _generate_month_state(start_date_str: str) -> dict:
 
         week_summary = summarize_week(week_state)
         for name, stats in week_summary.items():
-            total = summary_total.setdefault(
-                name, {"days": 0, "hours": 0.0}
-            )
+            total = summary_total.setdefault(name, {"days": 0, "hours": 0.0})
             total["days"] += int(stats["days"])
             total["hours"] += float(stats["hours"])
 

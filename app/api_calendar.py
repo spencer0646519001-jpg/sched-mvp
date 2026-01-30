@@ -8,6 +8,7 @@ from app.domain.normalize import canonical_station, canonical_shift
 
 router = APIRouter()
 
+
 @router.get("/calendar/month")
 def api_calendar_month(start_date: str = ""):
     """
@@ -15,6 +16,7 @@ def api_calendar_month(start_date: str = ""):
     回傳整月每天 assignments
     """
     return build_month(start_date)
+
 
 @router.get("/calendar/month_csv")
 def api_calendar_month_csv(start_date: str = ""):
@@ -47,7 +49,6 @@ def api_calendar_month_csv(start_date: str = ""):
                             "shift": e.get("shift", ""),
                         }
                     )
-
 
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=["date", "station", "name", "shift"])

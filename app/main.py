@@ -2,6 +2,11 @@
 # ---------------------------
 # Sched-MVP FastAPI server
 # ---------------------------
+import os
+import django
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+django.setup()
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,8 +58,7 @@ def generate_day_api(date: str, absent: str = ""):
 
     try:
         absent_list = (
-            [x.strip() for x in absent.split(",") if x.strip()]
-            if absent else []
+            [x.strip() for x in absent.split(",") if x.strip()] if absent else []
         )
 
         result = gd.greedy_assign(date, absent_list)

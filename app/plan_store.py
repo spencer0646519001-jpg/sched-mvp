@@ -26,9 +26,11 @@ def save_plan(plan_id: str, plan: Dict[str, Any]) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(plan, f, ensure_ascii=False, indent=2)
 
+
 def plan_exists(plan_id: str) -> bool:
     path = plan_path(plan_id)
     return os.path.exists(path)
+
 
 def load_plan(plan_id: str) -> Dict[str, Any]:
     path = plan_path(plan_id)
@@ -36,6 +38,7 @@ def load_plan(plan_id: str) -> Dict[str, Any]:
         raise FileNotFoundError(f"Plan not found: {plan_id}")
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
 
 def list_plans() -> List[Dict[str, Any]]:
     """
@@ -57,13 +60,17 @@ def list_plans() -> List[Dict[str, Any]]:
         except Exception:
             continue
 
-        results.append({
-            "plan_id": plan_id,
-            "date": plan.get("date"),
-        })
+        results.append(
+            {
+                "plan_id": plan_id,
+                "date": plan.get("date"),
+            }
+        )
 
     results.sort(key=lambda x: (x.get("date") or "", x["plan_id"]))
     return results
+
+
 def delete_plan_file(plan_id: str) -> bool:
     path = plan_path(plan_id)
     if not os.path.exists(path):

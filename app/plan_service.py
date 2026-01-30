@@ -38,7 +38,6 @@ def create_plan(date: str) -> Dict[str, Any]:
     return {"plan_id": pid, "date": date, "plan": base_plan.get("assignments", {})}
 
 
-
 def _compute_patch(
     base_plan: Dict[str, Any],
     date: str,
@@ -52,7 +51,7 @@ def _compute_patch(
     # --- B3: guard & canonicalize patch BEFORE touching the engine ---
     people_names = [p.get("name", "") for p in _people if isinstance(p, dict)]
     patch, guard_errors = build_canonical_patch(
-        plan_date=date,      # date 永遠用 plan 的，不信任 LLM
+        plan_date=date,  # date 永遠用 plan 的，不信任 LLM
         parsed=parsed,
         people_names=people_names,
     )
@@ -71,7 +70,9 @@ def _compute_patch(
 
     # --- keep your post-normalize of plan assignments (optional but OK) ---
     if new_plan is not None:
-        norm, norm_errors = normalize_engine_assignments(new_plan.get("assignments", {}))
+        norm, norm_errors = normalize_engine_assignments(
+            new_plan.get("assignments", {})
+        )
         new_plan["assignments"] = norm
         errors = errors + [f"NORMALIZE:{e['type']}" for e in norm_errors]
 
@@ -104,8 +105,12 @@ def patch_preview(plan_id: str, text: str) -> Dict[str, Any]:
     # --- B3-4: expose LLM uncertainty (no decision yet) ---
     confidence_summary = {
         "name": parsed.get("name_confidence", 1.0) if isinstance(parsed, dict) else 1.0,
-        "station": parsed.get("station_confidence", 1.0) if isinstance(parsed, dict) else 1.0,
-        "shift": parsed.get("shift_confidence", 1.0) if isinstance(parsed, dict) else 1.0,
+        "station": (
+            parsed.get("station_confidence", 1.0) if isinstance(parsed, dict) else 1.0
+        ),
+        "shift": (
+            parsed.get("shift_confidence", 1.0) if isinstance(parsed, dict) else 1.0
+        ),
     }
 
     return {
@@ -117,7 +122,6 @@ def patch_preview(plan_id: str, text: str) -> Dict[str, Any]:
         "before_plan": base_plan.get("assignments", {}),
         "after_plan": new_plan.get("assignments", {}) if new_plan is not None else {},
     }
-
 
 
 def patch_apply(plan_id: str, text: str) -> Dict[str, Any]:
@@ -141,7 +145,7 @@ def patch_apply(plan_id: str, text: str) -> Dict[str, Any]:
     date = base_plan.get("date") or "2025-11-10"  # 用 plan 的 date 當主
     parsed, new_plan, errors = _compute_patch(base_plan, date, text)
 
-    saved = (len(errors) == 0 and new_plan is not None)
+    saved = len(errors) == 0 and new_plan is not None
 
     if saved:
         save_plan(plan_id, new_plan)
@@ -158,12 +162,15 @@ def patch_apply(plan_id: str, text: str) -> Dict[str, Any]:
         "after_plan": new_plan.get("assignments", {}) if new_plan is not None else {},
         "saved": saved,
     }
+
+
 def _validate_plan_id(plan_id: str) -> Optional[Dict[str, Any]]:
     if not plan_id:
         return {"success": False, "errors": ["MISSING_PLAN_ID"]}
     if not plan_exists(plan_id):
         return {"success": False, "errors": ["PLAN_NOT_FOUND"], "plan_id": plan_id}
     return None
+
 
 def normalize_assignments_for_ui(assignments: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
@@ -189,6 +196,7 @@ def normalize_assignments_for_ui(assignments: Dict[str, Any]) -> List[Dict[str, 
             )
     return rows
 
+
 def get_plan(plan_id: str) -> Dict[str, Any]:
     if not plan_id:
         return {"success": False, "errors": ["MISSING_PLAN_ID"]}
@@ -206,14 +214,18 @@ def get_plan(plan_id: str) -> Dict[str, Any]:
         "errors": [],
     }
 
+
 def list_all_plans() -> List[Dict[str, Any]]:
     return list_plans()
+
+
 from app.plan_store import delete_plan_file
+
 
 def delete_plan(plan_id: str) -> dict:
     ok = delete_plan_file(plan_id)
     return {
         "plan_id": plan_id,
         "success": ok,
-        "errors": [] if ok else ["PLAN_NOT_FOUND"]
+        "errors": [] if ok else ["PLAN_NOT_FOUND"],
     }

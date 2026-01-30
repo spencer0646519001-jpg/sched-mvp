@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from zoneinfo import ZoneInfo
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -33,6 +33,10 @@ def present_run_out(
     schedule = out.get("schedule") or out.get("assignments") or {}
     warnings = out.get("warnings") or []
 
+    # ✅ 這兩個你要補上：從 out 讀出來
+    chefs_present = out.get("chefs_present") or []
+    headcount_total = out.get("headcount_total")
+
     assignments = _normalize_assignments(schedule)
     warnings_norm = _normalize_warnings(warnings)
 
@@ -40,6 +44,8 @@ def present_run_out(
         "ok": True,
         "data": {
             "date": date,
+            "chefs_present": chefs_present,
+            "headcount_total": headcount_total,
             "assignments": assignments,
             "warnings": warnings_norm,
         },
@@ -48,6 +54,7 @@ def present_run_out(
             "generated_at": generated_at or iso_now_jst(),
         },
     }
+
 
 
 def _normalize_assignments(schedule: Any) -> List[Dict[str, Any]]:
@@ -213,3 +220,42 @@ def _dict_to_message(d: Dict[str, Any]) -> str:
         return ", ".join(parts)
     # fallback：只列出 key
     return "warning: " + ", ".join(sorted(map(str, d.keys())))
+
+
+
+def _now_tokyo_iso() -> str:
+    return datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(timespec="seconds")
+
+
+def present_api_success(
+    *,
+    data: Dict[str, Any],
+    meta: Optional[Dict[str, Any]] = None,
+    generated_at: Optional[str] = None,
+) -> Dict[str, Any]:
+    if meta is None:
+        meta = {}
+    meta = dict(meta)
+    meta.setdefault("generated_at", generated_at or _now_tokyo_iso())
+
+    return {"ok": True, "data": data, "meta": meta}
+
+
+def present_api_error(
+    *,
+    code: str,
+    message: str,
+    details: Optional[Dict[str, Any]] = None,
+    meta: Optional[Dict[str, Any]] = None,
+    generated_at: Optional[str] = None,
+) -> Dict[str, Any]:
+    if meta is None:
+        meta = {}
+    meta = dict(meta)
+    meta.setdefault("generated_at", generated_at or _now_tokyo_iso())
+
+    err = {"code": code, "message": message}
+    if details:
+        err["details"] = details
+
+    return {"ok": False, "error": err, "meta": meta}
