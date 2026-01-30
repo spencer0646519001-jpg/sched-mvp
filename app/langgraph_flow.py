@@ -29,6 +29,7 @@ class GraphState(TypedDict, total=False):
     # trace + explanation
     decision_trace: List[Dict[str, Any]]
     explanations: Dict[str, str]
+    metrics: Dict[str, int]
 
 
 def _load_station_need_normalized(rules: Dict[str, Any]) -> Dict[str, int]:
@@ -145,7 +146,16 @@ def node_explain(state: GraphState) -> GraphState:
     trace = state.get("decision_trace") or []
     explanations: Dict[str, str] = {}
 
+    metrics = {
+        "stations_total": 0,
+        "fallback_stations": 0,
+        "fallback_people_total": 0,
+        "absent_skill_total": 0,
+        "skill_not_used_total": 0,
+    }
+
     for item in trace:
+        # ====== 先抽資料（非常重要的順序）======
         st = item.get("station")
         picked = item.get("picked") or []
         skilled_top = item.get("skilled_pool_top") or []
@@ -160,6 +170,19 @@ def node_explain(state: GraphState) -> GraphState:
         if not st:
             continue
 
+        # ====== metrics（B1-2）======
+        metrics["stations_total"] += 1
+
+        if has_fallback:
+            metrics["fallback_stations"] += 1
+
+        fallback_people = max(0, len(picked) - len(picked_has_skill))
+        metrics["fallback_people_total"] += fallback_people
+
+        metrics["absent_skill_total"] += len(missing_but_absent)
+        metrics["skill_not_used_total"] += len(missing_and_not_absent)
+
+        # ====== explain text ======
         if not picked:
             explanations[st] = "此站位沒有被分配到人。"
             continue
@@ -168,7 +191,10 @@ def node_explain(state: GraphState) -> GraphState:
         lines.append(f"分配到：{', '.join(picked)}")
 
         if skilled_top:
-            lines.append(f"此站位有技能名單（DB Top）：{', '.join(skilled_top)}{'…' if len(skilled_top)==8 else ''}")
+            lines.append(
+                f"此站位有技能名單（DB Top）：{', '.join(skilled_top)}"
+                f"{'…' if len(skilled_top) == 8 else ''}"
+            )
         else:
             lines.append("此站位 DB 查不到技能名單（可能未建 skill 或被停用）。")
 
@@ -178,9 +204,16 @@ def node_explain(state: GraphState) -> GraphState:
             lines.append("分配到的人在 DB skill 名單中找不到（= 沒技能）。")
 
         if has_fallback:
-            lines.append("⚠️ 出現 fallback_no_skill：代表當輪到此站位時，候選池裡沒有『有技能且未被用掉』的人，只好用沒技能的人頂上。")
-            lines.append("最常見原因：站位排序 + used_today 先把技能者用在其他站位，導致此站位輪到時已無技能者可用。")
-        # ✅ B1-2 evidence
+            lines.append(
+                "⚠️ 出現 fallback_no_skill：代表當輪到此站位時，候選池裡沒有"
+                "『有技能且未被用掉』的人，只好用沒技能的人頂上。"
+            )
+            lines.append(
+                "最常見原因：站位排序 + used_today 先把技能者用在其他站位，"
+                "導致此站位輪到時已無技能者可用。"
+            )
+
+        # ====== B1-2 evidence ======
         if skilled_total is not None:
             lines.append(f"技能名單總數：{skilled_total}")
 
@@ -193,16 +226,19 @@ def node_explain(state: GraphState) -> GraphState:
         if missing_and_not_absent:
             lines.append(
                 "其中未缺席但未被選到（可能被其他站位先用掉 / 不可排 / 資料不一致）："
-        + ", ".join(missing_and_not_absent)
-    )
-    
-        # 若你想保留 notes 給 debug（可選）
+                + ", ".join(missing_and_not_absent)
+            )
+
+        # debug（可留可刪）
         if notes:
             lines.append(f"notes: {', '.join([str(x) for x in notes])}")
 
         explanations[st] = "\n".join(lines)
 
-    return {"explanations": explanations}
+    return {
+        "explanations": explanations,
+        "metrics": metrics,
+    }
 
 
 def build_graph():
@@ -228,7 +264,12 @@ def build_graph():
 
 
 
-def run_daily_schedule_graph(*, tenant_name: str, date_str: str, absent: Optional[List[str]] = None) -> Dict[str, Any]:
+def run_daily_schedule_graph(
+    *,
+    tenant_name: str,
+    date_str: str,
+    absent: Optional[List[str]] = None
+) -> Dict[str, Any]:
     graph = build_graph()
     state_in: GraphState = {
         "tenant_name": tenant_name,
@@ -237,24 +278,25 @@ def run_daily_schedule_graph(*, tenant_name: str, date_str: str, absent: Optiona
     }
     state_out = graph.invoke(state_in)
 
-    # 給 API 用：把 greedy out + explanations 一起回傳
+    # engine outputs
     out_engine = state_out["greedy_result"]
     decision_trace = state_out.get("decision_trace", [])
     explanations = state_out.get("explanations", {})
+    metrics = state_out.get("metrics", {})  # ✅ 就是這一行
 
     return {
-            "ok": True,
-            "data": {
-                "out": out_engine,
-                "decision_trace": decision_trace,
-                "explanations": explanations,
-            },
-            # backward compatibility（先留著，避免其他地方還在用）
-            "compat": {
-                "out_engine": out_engine,
-                "decision_trace": decision_trace,
-                "explanations": explanations,
-            }
+        "ok": True,
+        "data": {
+            "out": out_engine,
+            "decision_trace": decision_trace,
+            "explanations": explanations,
+            "metrics": metrics,               # ✅ 對外 API
+        },
+        # backward compatibility
+        "compat": {
+            "out_engine": out_engine,
+            "decision_trace": decision_trace,
+            "explanations": explanations,
+            "metrics": metrics,               # ✅ 舊接口也能拿
         }
-
-
+    }
