@@ -141,13 +141,23 @@ def create_daily_run_graph(request, tenant_name: str):
 
     # 3) run LangGraph (greedy inside)
     result = run_daily_schedule_graph(
-        tenant_name=tenant_name,
-        date_str=date_str,
-        absent=absent,
-    )
+    tenant_name=tenant_name,
+    date_str=date_str,
+    absent=absent,
+)
 
-    # 4) presenter（沿用你已經很乾淨的 presenter）
-    out = result["out_engine"]
+    # ✅ 新版：run_daily_schedule_graph 回傳 {"ok": True, "data": {...}, "compat": {...}}
+    data = result.get("data") or {}
+    compat = result.get("compat") or {}
+
+    out = data.get("out") or compat.get("out_engine")
+    decision_trace = data.get("decision_trace") or compat.get("decision_trace") or []
+    explanations = data.get("explanations") or compat.get("explanations") or {}
+    metrics = data.get("metrics") or {}
+
+    if out is None:
+        raise KeyError("run_daily_schedule_graph returned no out/data.out (and no compat.out_engine)")
+
     out["explanations"] = result.get("explanations", {})
 
     presented = present_run_out(date=date_str, out=out)
