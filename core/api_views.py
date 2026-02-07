@@ -16,6 +16,39 @@ from app.presenter import (
 from app.langgraph_flow import run_daily_schedule_graph
 
 
+def _parse_request_payload(request):
+    try:
+        return json.loads(request.body.decode("utf-8") or "{}"), None
+    except json.JSONDecodeError:
+        payload_err = present_api_error(
+            code="invalid_json",
+            message="Invalid JSON body",
+        )
+        return None, payload_err
+
+
+def _validate_daily_run_payload(payload, *, include_absent_type: bool):
+    date_str = payload.get("date")
+    if not date_str:
+        payload_err = present_api_error(
+            code="missing_date",
+            message="Missing 'date' in body",
+        )
+        return None, None, payload_err
+
+    absent = payload.get("absent") or []
+    if not isinstance(absent, list):
+        details = {"absent_type": type(absent).__name__} if include_absent_type else None
+        payload_err = present_api_error(
+            code="invalid_absent",
+            message="'absent' must be a list",
+            details=details,
+        )
+        return None, None, payload_err
+
+    return date_str, absent, None
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def create_daily_run(request, tenant_name: str):
@@ -27,31 +60,16 @@ def create_daily_run(request, tenant_name: str):
     }
     """
     # 1) parse JSON
-    try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
-    except json.JSONDecodeError:
-        payload_err = present_api_error(
-            code="invalid_json",
-            message="Invalid JSON body",
-        )
+    payload, payload_err = _parse_request_payload(request)
+    if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
 
     # 2) validate
-    date_str = payload.get("date")
-    if not date_str:
-        payload_err = present_api_error(
-            code="missing_date",
-            message="Missing 'date' in body",
-        )
-        return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
-
-    absent = payload.get("absent") or []
-    if not isinstance(absent, list):
-        payload_err = present_api_error(
-            code="invalid_absent",
-            message="'absent' must be a list",
-            details={"absent_type": type(absent).__name__},
-        )
+    date_str, absent, payload_err = _validate_daily_run_payload(
+        payload,
+        include_absent_type=True,
+    )
+    if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
 
     # 3) run engine + save DB
@@ -113,30 +131,16 @@ def create_daily_run_graph(request, tenant_name: str):
     - 回傳 explanations
     """
     # 1) parse JSON
-    try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
-    except json.JSONDecodeError:
-        payload_err = present_api_error(
-            code="invalid_json",
-            message="Invalid JSON body",
-        )
+    payload, payload_err = _parse_request_payload(request)
+    if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
 
     # 2) validate
-    date_str = payload.get("date")
-    if not date_str:
-        payload_err = present_api_error(
-            code="missing_date",
-            message="Missing 'date' in body",
-        )
-        return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
-
-    absent = payload.get("absent") or []
-    if not isinstance(absent, list):
-        payload_err = present_api_error(
-            code="invalid_absent",
-            message="'absent' must be a list",
-        )
+    date_str, absent, payload_err = _validate_daily_run_payload(
+        payload,
+        include_absent_type=False,
+    )
+    if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
 
     # 3) run LangGraph (greedy inside)
