@@ -82,6 +82,51 @@ def node_run_greedy(state: GraphState) -> GraphState:
     out = greedy_assign(date_str, absent=absent)
     return {"greedy_result": out}
 
+def _build_station_trace_item(
+    st: str,
+    assignees: List[Dict[str, Any]],
+    skilled: List[str],
+    absent: List[str],
+) -> Dict[str, Any]:
+    picked_names = [a.get("name") for a in assignees if a.get("name")]
+
+    notes_flat: List[str] = []
+    for a in assignees:
+        notes = a.get("notes")
+        if isinstance(notes, list):
+            notes_flat.extend([str(x) for x in notes])
+        elif isinstance(notes, str) and notes:
+            notes_flat.append(notes)
+
+    has_fallback = any(n == "fallback_no_skill" for n in notes_flat)
+
+    skilled_set = set(skilled)
+    picked_has_skill = [n for n in picked_names if n in skilled_set]
+
+    # ✅ skill 名單中「沒被選到」的人（前 N）
+    missing = [n for n in skilled if n not in set(picked_names)]
+    missing_top = missing[:8]
+    absent_set = set(absent)
+    missing_but_absent = [n for n in missing if n in absent_set][:8]
+    missing_and_not_absent = [n for n in missing if n not in absent_set][:8]
+
+    return {
+        "station": st,
+        "picked": picked_names,
+        "notes": notes_flat,
+
+        "absent": absent,
+        "missing_but_absent_top": missing_but_absent,
+        "missing_and_not_absent_top": missing_and_not_absent,
+
+        "skilled_total": len(skilled),
+        "skilled_pool_top": skilled[:8],
+        "skilled_missing_top": missing_top,
+
+        "has_fallback": has_fallback,
+        "picked_has_skill": picked_has_skill,
+    }
+
 def node_build_trace(state: GraphState) -> GraphState:
     out = state["greedy_result"]
     assignments: Dict[str, List[dict]] = out.get("assignments") or {}
@@ -98,48 +143,94 @@ def node_build_trace(state: GraphState) -> GraphState:
     for st in ordered:
         assignees = assignments.get(st) or []
         skilled = skills_by_station.get(st) or []
-
-        picked_names = [a.get("name") for a in assignees if a.get("name")]
-
-        notes_flat: List[str] = []
-        for a in assignees:
-            notes = a.get("notes")
-            if isinstance(notes, list):
-                notes_flat.extend([str(x) for x in notes])
-            elif isinstance(notes, str) and notes:
-                notes_flat.append(notes)
-
-        has_fallback = any(n == "fallback_no_skill" for n in notes_flat)
-
-        skilled_set = set(skilled)
-        picked_has_skill = [n for n in picked_names if n in skilled_set]
-
-        # ✅ skill 名單中「沒被選到」的人（前 N）
-        missing = [n for n in skilled if n not in set(picked_names)]
-        missing_top = missing[:8]
-        absent_set = set(absent)
-        missing_but_absent = [n for n in missing if n in absent_set][:8]
-        missing_and_not_absent = [n for n in missing if n not in absent_set][:8]
-
-        trace.append({
-            "station": st,
-            "picked": picked_names,
-            "notes": notes_flat,
-
-            "absent": absent,
-            "missing_but_absent_top": missing_but_absent,
-            "missing_and_not_absent_top": missing_and_not_absent,
-
-            "skilled_total": len(skilled),
-            "skilled_pool_top": skilled[:8],
-            "skilled_missing_top": missing_top,
-
-            "has_fallback": has_fallback,
-            "picked_has_skill": picked_has_skill,
-        })
+        trace.append(_build_station_trace_item(st, assignees, skilled, absent))
 
     return {"decision_trace": trace}
 
+
+
+def _apply_trace_item_metrics(
+    metrics: Dict[str, int],
+    *,
+    picked: List[str],
+    picked_has_skill: List[str],
+    has_fallback: bool,
+    missing_but_absent: List[str],
+    missing_and_not_absent: List[str],
+) -> Dict[str, int]:
+    updated = dict(metrics)
+    updated["stations_total"] += 1
+
+    if has_fallback:
+        updated["fallback_stations"] += 1
+
+    fallback_people = max(0, len(picked) - len(picked_has_skill))
+    updated["fallback_people_total"] += fallback_people
+
+    updated["absent_skill_total"] += len(missing_but_absent)
+    updated["skill_not_used_total"] += len(missing_and_not_absent)
+    return updated
+
+
+def _build_explanation_lines(
+    *,
+    picked: List[str],
+    skilled_top: List[str],
+    picked_has_skill: List[str],
+    has_fallback: bool,
+    skilled_total: Optional[int],
+    missing: List[str],
+    missing_but_absent: List[str],
+    missing_and_not_absent: List[str],
+    notes: List[Any],
+) -> List[str]:
+    lines = []
+    lines.append(f"分配到：{', '.join(picked)}")
+
+    if skilled_top:
+        lines.append(
+            f"此站位有技能名單（DB Top）：{', '.join(skilled_top)}"
+            f"{'…' if len(skilled_top) == 8 else ''}"
+        )
+    else:
+        lines.append("此站位 DB 查不到技能名單（可能未建 skill 或被停用）。")
+
+    if picked_has_skill:
+        lines.append(f"其中具備此站技能：{', '.join(picked_has_skill)}")
+    else:
+        lines.append("分配到的人在 DB skill 名單中找不到（= 沒技能）。")
+
+    if has_fallback:
+        lines.append(
+            "⚠️ 出現 fallback_no_skill：代表當輪到此站位時，候選池裡沒有"
+            "『有技能且未被用掉』的人，只好用沒技能的人頂上。"
+        )
+        lines.append(
+            "最常見原因：站位排序 + used_today 先把技能者用在其他站位，"
+            "導致此站位輪到時已無技能者可用。"
+        )
+
+    # ====== B1-2 evidence ======
+    if skilled_total is not None:
+        lines.append(f"技能名單總數：{skilled_total}")
+
+    if missing:
+        lines.append(f"技能名單中未被選到（Top）：{', '.join(missing)}")
+
+    if missing_but_absent:
+        lines.append(f"其中缺席（absent）者：{', '.join(missing_but_absent)}")
+
+    if missing_and_not_absent:
+        lines.append(
+            "其中未缺席但未被選到（可能被其他站位先用掉 / 不可排 / 資料不一致）："
+            + ", ".join(missing_and_not_absent)
+        )
+
+    # debug（可留可刪）
+    if notes:
+        lines.append(f"notes: {', '.join([str(x) for x in notes])}")
+
+    return lines
 
 
 def node_explain(state: GraphState) -> GraphState:
@@ -171,67 +262,31 @@ def node_explain(state: GraphState) -> GraphState:
             continue
 
         # ====== metrics（B1-2）======
-        metrics["stations_total"] += 1
-
-        if has_fallback:
-            metrics["fallback_stations"] += 1
-
-        fallback_people = max(0, len(picked) - len(picked_has_skill))
-        metrics["fallback_people_total"] += fallback_people
-
-        metrics["absent_skill_total"] += len(missing_but_absent)
-        metrics["skill_not_used_total"] += len(missing_and_not_absent)
+        metrics = _apply_trace_item_metrics(
+            metrics,
+            picked=picked,
+            picked_has_skill=picked_has_skill,
+            has_fallback=has_fallback,
+            missing_but_absent=missing_but_absent,
+            missing_and_not_absent=missing_and_not_absent,
+        )
 
         # ====== explain text ======
         if not picked:
             explanations[st] = "此站位沒有被分配到人。"
             continue
 
-        lines = []
-        lines.append(f"分配到：{', '.join(picked)}")
-
-        if skilled_top:
-            lines.append(
-                f"此站位有技能名單（DB Top）：{', '.join(skilled_top)}"
-                f"{'…' if len(skilled_top) == 8 else ''}"
-            )
-        else:
-            lines.append("此站位 DB 查不到技能名單（可能未建 skill 或被停用）。")
-
-        if picked_has_skill:
-            lines.append(f"其中具備此站技能：{', '.join(picked_has_skill)}")
-        else:
-            lines.append("分配到的人在 DB skill 名單中找不到（= 沒技能）。")
-
-        if has_fallback:
-            lines.append(
-                "⚠️ 出現 fallback_no_skill：代表當輪到此站位時，候選池裡沒有"
-                "『有技能且未被用掉』的人，只好用沒技能的人頂上。"
-            )
-            lines.append(
-                "最常見原因：站位排序 + used_today 先把技能者用在其他站位，"
-                "導致此站位輪到時已無技能者可用。"
-            )
-
-        # ====== B1-2 evidence ======
-        if skilled_total is not None:
-            lines.append(f"技能名單總數：{skilled_total}")
-
-        if missing:
-            lines.append(f"技能名單中未被選到（Top）：{', '.join(missing)}")
-
-        if missing_but_absent:
-            lines.append(f"其中缺席（absent）者：{', '.join(missing_but_absent)}")
-
-        if missing_and_not_absent:
-            lines.append(
-                "其中未缺席但未被選到（可能被其他站位先用掉 / 不可排 / 資料不一致）："
-                + ", ".join(missing_and_not_absent)
-            )
-
-        # debug（可留可刪）
-        if notes:
-            lines.append(f"notes: {', '.join([str(x) for x in notes])}")
+        lines = _build_explanation_lines(
+            picked=picked,
+            skilled_top=skilled_top,
+            picked_has_skill=picked_has_skill,
+            has_fallback=has_fallback,
+            skilled_total=skilled_total,
+            missing=missing,
+            missing_but_absent=missing_but_absent,
+            missing_and_not_absent=missing_and_not_absent,
+            notes=notes,
+        )
 
         explanations[st] = "\n".join(lines)
 
