@@ -4,6 +4,7 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from core.presenters.daily_run_presenter import (present_create_daily_run_success,present_create_daily_run_graph_success,)
 
 from core.models import ScheduleRun
 from app.month_service import run_daily_schedule
@@ -52,13 +53,6 @@ def _validate_daily_run_payload(payload, *, include_absent_type: bool):
 @csrf_exempt
 @require_http_methods(["POST"])
 def create_daily_run(request, tenant_name: str):
-    """
-    POST body:
-    {
-      "date": "2026-01-06",
-      "absent": ["Kim", "Spencer"]
-    }
-    """
     # 1) parse JSON
     payload, payload_err = _parse_request_payload(request)
     if payload_err:
@@ -75,16 +69,17 @@ def create_daily_run(request, tenant_name: str):
     # 3) run engine + save DB
     run = run_daily_schedule(tenant_name, date_str, absent=absent)
 
-    # 4) build + present out
+    # 4) build out (raw)
     out = build_out_from_run(run)
-    presented = present_run_out(date=date_str, out=out)
 
-    payload_ok = present_api_success(
-        data={"run_id": run.id, "out": presented},
-        meta={"engine_version": "0.1"},
+    # ✅ 5) delegate presentation
+    payload_ok = present_create_daily_run_success(
+        run_id=run.id,
+        date_str=date_str,
+        out=out,
     )
-    return JsonResponse(payload_ok, json_dumps_params={"ensure_ascii": False}, status=201)
 
+    return JsonResponse(payload_ok, json_dumps_params={"ensure_ascii": False}, status=201)
 
 @require_http_methods(["GET"])
 def get_run_out(request, run_id: int):
@@ -162,12 +157,11 @@ def create_daily_run_graph(request, tenant_name: str):
     if out is None:
         raise KeyError("run_daily_schedule_graph returned no out/data.out (and no compat.out_engine)")
 
-    out["explanations"] = result.get("explanations", {})
+    out["explanations"] = explanations
+
 
     presented = present_run_out(date=date_str, out=out)
 
-    payload_ok = present_api_success(
-        data={"out": presented},
-        meta={"engine_version": "0.1"},
-    )
+    payload_ok = present_create_daily_run_graph_success(out=presented)
+
     return JsonResponse(payload_ok, json_dumps_params={"ensure_ascii": False}, status=201)
