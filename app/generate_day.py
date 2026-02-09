@@ -10,10 +10,11 @@ from datetime import datetime  # 日期處理
 from dateutil import parser as dtparser  # 解析字串日期
 import argparse  # 解析 CLI 參數
 import random
+from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional  # 型別註解
 from app.week_utils import choose_shift_for_person
-from app.db_loaders import load_people_from_db
-from core.models import Tenant, Station
+from app.infra.db_loader import load_people, load_station_order
+from app.infra.json_loader import load_shifts, load_rules, load_calendar
 import logging
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,15 @@ logger = logging.getLogger(__name__)
 week_state = None
 # 以檔案自身位置定位 data 目錄：<repo>/sched-mvp/data
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+
+
+@dataclass(frozen=True)
+class EngineInputs:
+    shifts_list: List[dict]
+    rules: dict
+    calendar: dict
+    people: List[dict]
+    station_order: List[str]
 
 
 # -------- I/O 基礎 --------
@@ -34,6 +44,22 @@ def save_json(obj, out_path: Path):
     """輸出結果到檔案（供除錯用）。"""
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
+
+
+def _build_engine_inputs_default(tenant_name: str) -> EngineInputs:
+    shifts_list = load_shifts()
+    rules = load_rules()
+    calendar = load_calendar()
+    people = load_people(tenant_name)
+    station_order = load_station_order(tenant_name)
+
+    return EngineInputs(
+        shifts_list=shifts_list,
+        rules=rules,
+        calendar=calendar,
+        people=people,
+        station_order=station_order,
+    )
 
 
 # -------- 小工具 --------
@@ -231,16 +257,19 @@ def assignment_cost(
 
 
 # -------- 核心：貪婪排班（帶 fallback 與不留空）--------
-def greedy_assign(date_str: str, absent: List[str]) -> dict:
+def greedy_assign_with_inputs(
+    date_str: str,
+    absent: List[str],
+    inputs: EngineInputs,
+) -> dict:
     # 解析日期；去掉 timezone 以免比較問題
     day = dtparser.parse(date_str).replace(tzinfo=None)
 
     # 載入所有設定
-    shifts_list = load_json("shifts.json")
-    shifts_map, paid_hours_map = build_shift_maps(shifts_list)
-    rules = load_json("rules.json")
-    calendar = load_json("calendar.json")
-    people = load_people_from_db("demo_kitchen")
+    shifts_map, paid_hours_map = build_shift_maps(inputs.shifts_list)
+    rules = inputs.rules
+    calendar = inputs.calendar
+    people = inputs.people
     require_one_chef = bool(rules.get("require_one_chef", True))
     allow_fallback = bool(rules.get("allow_fallback_when_short", True))
 
@@ -251,25 +280,22 @@ def greedy_assign(date_str: str, absent: List[str]) -> dict:
     )
     max_staff = int(rules.get("max_staff_per_day", 9))
 
-# 當日站位需求（仍從 rules.json）
+    # 當日站位需求（仍從 rules.json）
     station_need_raw: Dict[str, int] = rules.get("stations", {}) or {}
-    station_need: Dict[str, int] = {str(k).strip().lower(): int(v) for k, v in station_need_raw.items()}
+    station_need: Dict[str, int] = {
+        str(k).strip().lower(): int(v) for k, v in station_need_raw.items()
+    }
 
-    # 站位順序（從 DB 來）
-    tenant = Tenant.objects.get(name="demo_kitchen")
+    # 站位順序（由輸入決定）
+    db_station_codes = inputs.station_order or list(station_need.keys())
 
-    db_station_codes = list(
-        Station.objects
-        .filter(tenant=tenant, is_active=True)
-        .order_by("sort_order", "code")   # sort_order 小的先
-        .values_list("code", flat=True)
-    )
-
-    # 最終 stations：以 DB 順序為主，但只保留 rules 有定義需求的站位
+    # 最終 stations：以 station_order 為主，但只保留 rules 有定義需求的站位
     stations = [code for code in db_station_codes if code in station_need]
 
-    # 防呆：rules 有定義，但 DB 沒（或被停用）的站位 → 補到最後
-    missing_in_db = [code for code in station_need.keys() if code not in set(db_station_codes)]
+    # 防呆：rules 有定義，但 station_order 沒 → 補到最後
+    missing_in_db = [
+        code for code in station_need.keys() if code not in set(db_station_codes)
+    ]
     stations.extend(missing_in_db)
 
     warnings: List[str] = []
@@ -297,8 +323,6 @@ def greedy_assign(date_str: str, absent: List[str]) -> dict:
     ]
     logger.debug("station_need keys = %s", list(station_need.keys()))
     logger.debug("db_station_codes = %s", db_station_codes)
-    if "stations_final" in locals():
-        logger.debug("stations(final) = %s", stations_final)
 
     # 初始化
     assignments: Dict[str, List[dict]] = {s: [] for s in stations}
@@ -428,6 +452,11 @@ def greedy_assign(date_str: str, absent: List[str]) -> dict:
         "warnings": warnings,
     }
     return out
+
+
+def greedy_assign(date_str: str, absent: List[str]) -> dict:
+    inputs = _build_engine_inputs_default("demo_kitchen")
+    return greedy_assign_with_inputs(date_str, absent, inputs)
 
 
 def apply_manual_patch(
