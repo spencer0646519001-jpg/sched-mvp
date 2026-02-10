@@ -13,8 +13,7 @@ import random
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional  # 型別註解
 from app.week_utils import choose_shift_for_person
-from app.infra.db_loader import load_people, load_station_order
-from app.infra.json_loader import load_shifts, load_rules, load_calendar
+from app.infra.engine_inputs import build_inputs_from_db
 import logging
 logger = logging.getLogger(__name__)
 
@@ -44,22 +43,6 @@ def save_json(obj, out_path: Path):
     """輸出結果到檔案（供除錯用）。"""
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
-
-
-def _build_engine_inputs_default(tenant_name: str) -> EngineInputs:
-    shifts_list = load_shifts()
-    rules = load_rules()
-    calendar = load_calendar()
-    people = load_people(tenant_name)
-    station_order = load_station_order(tenant_name)
-
-    return EngineInputs(
-        shifts_list=shifts_list,
-        rules=rules,
-        calendar=calendar,
-        people=people,
-        station_order=station_order,
-    )
 
 
 # -------- 小工具 --------
@@ -455,7 +438,7 @@ def greedy_assign_with_inputs(
 
 
 def greedy_assign(date_str: str, absent: List[str]) -> dict:
-    inputs = _build_engine_inputs_default("demo_kitchen")
+    inputs = build_inputs_from_db("demo_kitchen")
     return greedy_assign_with_inputs(date_str, absent, inputs)
 
 
