@@ -32,12 +32,23 @@ def build_inputs_from_json() -> "EngineInputs":
     rules = load_rules()
     calendar = load_calendar()
     workers = load_workers()
-    people = workers.get("people") or []
-    station_order = [str(k).strip().lower() for k in (rules.get("stations") or {}).keys()]
+
+    raw_people = workers.get("people") or []
+    people = [p for p in raw_people if isinstance(p, dict)]
+
+    def _person_key(p: dict) -> tuple:
+        name = p.get("name")
+        return (0, str(name).strip().lower()) if name else (1, "")
+
+    people = sorted(people, key=_person_key)
+
+    stations = rules.get("stations") or {}
+    station_order = sorted(str(k).strip().lower() for k in stations.keys())
+
     return EngineInputs(
         shifts_list=shifts_list,
         rules=rules,
         calendar=calendar,
-        people=[p for p in people if isinstance(p, dict)],
+        people=people,
         station_order=station_order,
     )
