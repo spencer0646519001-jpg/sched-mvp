@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from app.infra.db_loader import load_people, load_station_order
-from app.infra.json_loader import load_calendar, load_rules, load_shifts, load_workers
 from typing import TYPE_CHECKING
+
+from app.infra.json_loader import load_calendar, load_rules, load_shifts, load_workers
 
 if TYPE_CHECKING:
     from app.generate_day import EngineInputs
