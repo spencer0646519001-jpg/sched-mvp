@@ -10,12 +10,6 @@ def load_people(tenant_name: str) -> List[dict]:
 
 
 def load_station_order(tenant_name: str) -> List[str]:
-    from core.models import Tenant, Station
+    from app.db_loaders import load_station_order_from_db
 
-    tenant = Tenant.objects.get(name=tenant_name)
-    return list(
-        Station.objects
-        .filter(tenant=tenant, is_active=True)
-        .order_by("sort_order", "code")
-        .values_list("code", flat=True)
-    )
+    return load_station_order_from_db(tenant_name)
