@@ -16,6 +16,14 @@ from app.presenter import (
 )
 from app.langgraph_flow import run_daily_schedule_graph
 from app import generate_day as gd
+from app.plan_service import (
+    create_plan,
+    patch_preview,
+    patch_apply,
+    get_plan,
+    list_all_plans,
+    delete_plan,
+)
 
 
 @require_http_methods(["GET"])
@@ -183,3 +191,74 @@ def create_daily_run_graph(request, tenant_name: str):
     payload_ok = present_create_daily_run_graph_success(out=presented)
 
     return JsonResponse(payload_ok, json_dumps_params={"ensure_ascii": False}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_plan_create_mirror(request):
+    payload, payload_err = _parse_request_payload(request)
+    if payload_err:
+        return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    date = payload.get("date", "2025-11-10")
+    result = create_plan(date)
+    return JsonResponse(result, json_dumps_params={"ensure_ascii": False}, status=200)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_plan_patch_preview_mirror(request):
+    payload, payload_err = _parse_request_payload(request)
+    if payload_err:
+        return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    result = patch_preview(payload.get("plan_id"), payload.get("text"))
+    return JsonResponse(result, json_dumps_params={"ensure_ascii": False}, status=200)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_plan_patch_apply_mirror(request):
+    payload, payload_err = _parse_request_payload(request)
+    if payload_err:
+        return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    result = patch_apply(payload.get("plan_id"), payload.get("text"))
+    return JsonResponse(result, json_dumps_params={"ensure_ascii": False}, status=200)
+
+
+@require_http_methods(["GET"])
+def api_plan_get_mirror(request):
+    plan_id = request.GET.get("plan_id", "")
+    if not plan_id:
+        return JsonResponse(
+            {
+                "success": False,
+                "errors": ["MISSING_PLAN_ID"],
+            },
+            json_dumps_params={"ensure_ascii": False},
+            status=200,
+        )
+
+    result = get_plan(plan_id)
+    if result.get("errors") == ["PLAN_NOT_FOUND"]:
+        return JsonResponse({"detail": "PLAN_NOT_FOUND"}, json_dumps_params={"ensure_ascii": False}, status=404)
+    return JsonResponse(result, json_dumps_params={"ensure_ascii": False}, status=200)
+
+
+@require_http_methods(["GET"])
+def api_plan_list_mirror(request):
+    return JsonResponse(list_all_plans(), json_dumps_params={"ensure_ascii": False}, status=200, safe=False)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def api_plan_delete_mirror(request):
+    plan_id = request.GET.get("plan_id", "")
+    if not plan_id:
+        return JsonResponse({"detail": "MISSING_PLAN_ID"}, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    result = delete_plan(plan_id)
+    if result.get("errors") == ["PLAN_NOT_FOUND"]:
+        return JsonResponse({"detail": "PLAN_NOT_FOUND"}, json_dumps_params={"ensure_ascii": False}, status=404)
+    return JsonResponse(result, json_dumps_params={"ensure_ascii": False}, status=200)

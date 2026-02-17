@@ -7,6 +7,12 @@ from core.api_views import (
     health,
     create_daily_run_graph,
     generate_day_api_mirror,
+    api_plan_create_mirror,
+    api_plan_patch_preview_mirror,
+    api_plan_patch_apply_mirror,
+    api_plan_get_mirror,
+    api_plan_list_mirror,
+    api_plan_delete_mirror,
 )
 from core.ui_views import ui_home
 
@@ -23,6 +29,14 @@ urlpatterns = [
 
     # Minimal FastAPI mirror in Django (D1 scope)
     path("generate/day/<str:date>", generate_day_api_mirror, name="generate_day_api_mirror"),
+
+    # plan* endpoints parity mirror (PR-D2)
+    path("plan/create", api_plan_create_mirror, name="api_plan_create_mirror"),
+    path("plan/patch_preview", api_plan_patch_preview_mirror, name="api_plan_patch_preview_mirror"),
+    path("plan/patch_apply", api_plan_patch_apply_mirror, name="api_plan_patch_apply_mirror"),
+    path("plan/get", api_plan_get_mirror, name="api_plan_get_mirror"),
+    path("plan/list", api_plan_list_mirror, name="api_plan_list_mirror"),
+    path("plan/delete", api_plan_delete_mirror, name="api_plan_delete_mirror"),
 
     # Existing UI under /api/ui/
     path("ui/", ui_home, name="ui_home"),
