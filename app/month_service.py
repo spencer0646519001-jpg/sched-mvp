@@ -4,7 +4,7 @@ from app.domain.normalize import normalize_engine_assignments
 from typing import Any, Dict, List, Tuple, Optional
 from datetime import date, datetime, timedelta
 from app.generate_day import greedy_assign
-from core.models import Tenant, Station, EmployeeStationSkill
+from app.infra.month_repo import build_station_map as build_station_map_repo
 
 from app.infra.schedule_run_repo import save_schedule_run_from_out as save_schedule_run_from_out_repo
 
@@ -109,25 +109,7 @@ def _month_rows(days: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def build_station_map_from_db(tenant_name: str) -> Dict[str, List[str]]:
-    tenant = Tenant.objects.get(name=tenant_name)
-
-    stations = (
-        Station.objects
-        .filter(tenant=tenant, is_active=True)
-        .order_by("sort_order", "code")
-    )
-
-    station_map: Dict[str, List[str]] = {}
-
-    for st in stations:
-        skills = (
-            EmployeeStationSkill.objects
-            .filter(tenant=tenant, station=st, employee__is_assignable=True, employee__is_active=True)
-            .order_by("-level")
-        )
-        station_map[st.code] = [s.employee.name for s in skills]
-
-    return station_map
+    return build_station_map_repo(tenant_name)
 
 
 
