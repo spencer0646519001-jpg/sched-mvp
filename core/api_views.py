@@ -212,7 +212,14 @@ def api_plan_patch_preview_mirror(request):
     if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
 
-    result = patch_preview(payload.get("plan_id"), payload.get("text"))
+    plan_id = payload.get("plan_id")
+    text_input = payload.get("text")
+    if not plan_id:
+        return JsonResponse({"detail": "MISSING_PLAN_ID"}, json_dumps_params={"ensure_ascii": False}, status=422)
+    if not text_input:
+        return JsonResponse({"detail": "MISSING_TEXT"}, json_dumps_params={"ensure_ascii": False}, status=422)
+
+    result = patch_preview(plan_id, text_input)
     return JsonResponse(result, json_dumps_params={"ensure_ascii": False}, status=200)
 
 
@@ -223,7 +230,14 @@ def api_plan_patch_apply_mirror(request):
     if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
 
-    result = patch_apply(payload.get("plan_id"), payload.get("text"))
+    plan_id = payload.get("plan_id")
+    text_input = payload.get("text")
+    if not plan_id:
+        return JsonResponse({"detail": "MISSING_PLAN_ID"}, json_dumps_params={"ensure_ascii": False}, status=422)
+    if not text_input:
+        return JsonResponse({"detail": "MISSING_TEXT"}, json_dumps_params={"ensure_ascii": False}, status=422)
+
+    result = patch_apply(plan_id, text_input)
     return JsonResponse(result, json_dumps_params={"ensure_ascii": False}, status=200)
 
 
@@ -232,12 +246,9 @@ def api_plan_get_mirror(request):
     plan_id = request.GET.get("plan_id", "")
     if not plan_id:
         return JsonResponse(
-            {
-                "success": False,
-                "errors": ["MISSING_PLAN_ID"],
-            },
+            {"detail": "MISSING_PLAN_ID"},
             json_dumps_params={"ensure_ascii": False},
-            status=200,
+            status=422,
         )
 
     result = get_plan(plan_id)
@@ -256,7 +267,7 @@ def api_plan_list_mirror(request):
 def api_plan_delete_mirror(request):
     plan_id = request.GET.get("plan_id", "")
     if not plan_id:
-        return JsonResponse({"detail": "MISSING_PLAN_ID"}, json_dumps_params={"ensure_ascii": False}, status=400)
+        return JsonResponse({"detail": "MISSING_PLAN_ID"}, json_dumps_params={"ensure_ascii": False}, status=422)
 
     result = delete_plan(plan_id)
     if result.get("errors") == ["PLAN_NOT_FOUND"]:
