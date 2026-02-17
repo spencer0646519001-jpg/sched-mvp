@@ -15,6 +15,24 @@ from app.presenter import (
     present_api_error,
 )
 from app.langgraph_flow import run_daily_schedule_graph
+from app import generate_day as gd
+
+
+@require_http_methods(["GET"])
+def root_healthcheck(request):
+    return JsonResponse({"status": "ok"}, json_dumps_params={"ensure_ascii": False}, status=200)
+
+
+@require_http_methods(["GET"])
+def generate_day_api_mirror(request, date: str):
+    absent = request.GET.get("absent", "")
+    absent_list = [x.strip() for x in absent.split(",") if x.strip()] if absent else []
+
+    try:
+        result = gd.greedy_assign(date, absent_list)
+        return JsonResponse(result, json_dumps_params={"ensure_ascii": False}, status=200)
+    except Exception as e:
+        return JsonResponse({"detail": str(e)}, json_dumps_params={"ensure_ascii": False}, status=500)
 
 
 def _parse_request_payload(request):
