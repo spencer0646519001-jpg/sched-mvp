@@ -4,24 +4,8 @@ import argparse
 import json
 import random
 
-from app.generate_day import EngineInputs, greedy_assign_with_inputs
-from app.infra.json_loader import load_calendar, load_rules, load_shifts, load_workers
-
-
-def build_inputs_from_json() -> EngineInputs:
-    shifts_list = load_shifts()
-    rules = load_rules()
-    calendar = load_calendar()
-    workers = load_workers()
-    people = workers.get("people") or []
-    station_order = [str(k).strip().lower() for k in (rules.get("stations") or {}).keys()]
-    return EngineInputs(
-        shifts_list=shifts_list,
-        rules=rules,
-        calendar=calendar,
-        people=[p for p in people if isinstance(p, dict)],
-        station_order=station_order,
-    )
+from app.generate_day import greedy_assign_with_inputs
+from app.infra.engine_inputs import build_inputs_from_json
 
 
 def run_engine(date: str, absent: list[str], seed: int | None = None) -> dict:
