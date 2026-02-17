@@ -7,17 +7,8 @@ from app.llm_parser import parse_request_to_patch
 from app.generate_day import (
     greedy_assign,
     apply_manual_patch,
-    load_json,
-    build_shift_maps,
 )
-
-# ---- 只載入一次（避免每個 request 都讀檔）----
-# 如果你之後想做熱更新，再改成 lazy reload / cache
-_shifts_list = load_json("shifts.json")
-_shifts_map, _paid_hours_map = build_shift_maps(_shifts_list)
-_rules = load_json("rules.json")
-_calendar = load_json("calendar.json")
-_people = load_json("workers.json")["people"]
+from app.infra.plan_data_provider import PlanDataProvider, default_plan_data_provider
 
 
 def create_plan(date: str) -> Dict[str, Any]:
@@ -42,14 +33,16 @@ def _compute_patch(
     base_plan: Dict[str, Any],
     date: str,
     text: str,
+    provider: Optional[PlanDataProvider] = None,
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], List[str]]:
+    data = (provider or default_plan_data_provider).get()
     parsed = parse_request_to_patch(text)
 
     if parsed.get("intent") != "adjust_shift":
         return parsed, None, ["NOT_ADJUST_SHIFT"]
 
     # --- B3: guard & canonicalize patch BEFORE touching the engine ---
-    people_names = [p.get("name", "") for p in _people if isinstance(p, dict)]
+    people_names = [p.get("name", "") for p in data.people if isinstance(p, dict)]
     patch, guard_errors = build_canonical_patch(
         plan_date=date,  # date 永遠用 plan 的，不信任 LLM
         parsed=parsed,
@@ -61,11 +54,11 @@ def _compute_patch(
     new_plan, errors = apply_manual_patch(
         base_plan,
         patch,
-        _rules,
-        _shifts_map,
-        _paid_hours_map,
-        _calendar,
-        _people,
+        data.rules,
+        data.shifts_map,
+        data.paid_hours_map,
+        data.calendar,
+        data.people,
     )
 
     # --- keep your post-normalize of plan assignments (optional but OK) ---
@@ -79,7 +72,11 @@ def _compute_patch(
     return parsed, new_plan, errors
 
 
-def patch_preview(plan_id: str, text: str) -> Dict[str, Any]:
+def patch_preview(
+    plan_id: str,
+    text: str,
+    provider: Optional[PlanDataProvider] = None,
+) -> Dict[str, Any]:
     if not plan_id:
         return {
             "success": False,
@@ -100,7 +97,7 @@ def patch_preview(plan_id: str, text: str) -> Dict[str, Any]:
     base_plan = load_plan(plan_id)
     date = base_plan.get("date") or "2025-11-10"  # 用 plan 的 date 當主
 
-    parsed, new_plan, errors = _compute_patch(base_plan, date, text)
+    parsed, new_plan, errors = _compute_patch(base_plan, date, text, provider=provider)
 
     # --- B3-4: expose LLM uncertainty (no decision yet) ---
     confidence_summary = {
@@ -124,7 +121,11 @@ def patch_preview(plan_id: str, text: str) -> Dict[str, Any]:
     }
 
 
-def patch_apply(plan_id: str, text: str) -> Dict[str, Any]:
+def patch_apply(
+    plan_id: str,
+    text: str,
+    provider: Optional[PlanDataProvider] = None,
+) -> Dict[str, Any]:
     if not plan_id:
         return {
             "success": False,
@@ -143,7 +144,7 @@ def patch_apply(plan_id: str, text: str) -> Dict[str, Any]:
 
     base_plan = load_plan(plan_id)
     date = base_plan.get("date") or "2025-11-10"  # 用 plan 的 date 當主
-    parsed, new_plan, errors = _compute_patch(base_plan, date, text)
+    parsed, new_plan, errors = _compute_patch(base_plan, date, text, provider=provider)
 
     saved = len(errors) == 0 and new_plan is not None
 
