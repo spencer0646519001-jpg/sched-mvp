@@ -64,72 +64,106 @@ The goal is not to claim “optimal schedules”, but to clearly answer:
 
 ---
 
-## Quick Start
+## Quick Start (Canonical: Django API)
 
-
+```bash
 python -m venv .venv
 # Windows
 .venv\Scripts\activate
 
 pip install -r requirements.txt
-
 python manage.py migrate
-python manage.py runserver
+```
+
+### Run locally (development)
+
+```bash
+python manage.py runserver 0.0.0.0:8000
+```
+
 Server will be available at:
 
-
+```text
 http://127.0.0.1:8000/
-Entry Points
-1) Django Admin (Data Setup)
+```
 
-http://127.0.0.1:8000/admin/
+### Runtime entrypoints (deployment)
+
+Use Django as the canonical API/runtime entrypoint:
+
+- **ASGI**:
+  ```bash
+  uvicorn config.asgi:application --host 0.0.0.0 --port 8000
+  ```
+- **WSGI**:
+  ```bash
+  gunicorn config.wsgi:application --bind 0.0.0.0:8000
+  ```
+
+---
+
+## Rollback: Legacy FastAPI Server (if needed)
+
+FastAPI implementation remains in `app/` for rollback only.
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Use this only if you need to temporarily switch back from the Django entrypoint.
+
+---
+
+## Entry Points
+
+### 1) Django Admin (Data Setup)
+
+- `http://127.0.0.1:8000/admin/`
+
 Used to manage:
 
-Tenants
+- Tenants
+- Employees
+- Stations
+- Employee–Station skills
 
-Employees
+All scheduling logic depends on this data. No station names or assignments are hard-coded.
 
-Stations
+### 2) Simple UI (API Driver / Demo)
 
-Employee–Station skills
+- `http://127.0.0.1:8000/api/ui/`
 
-All scheduling logic depends on this data.
-No station names or assignments are hard-coded.
-
-2) Simple UI (API Driver / Demo)
-
-http://127.0.0.1:8000/api/ui/
 Purpose:
 
-trigger daily scheduling
+- trigger daily scheduling
+- preview JSON output
+- inspect engine behavior without external tools
 
-preview JSON output
+### 3) Scheduling API (Graph-Based Engine)
 
-inspect engine behavior without external tools
+- `POST /api/tenants/demo_kitchen/daily-runs-graph/`
 
-3) Scheduling API (Graph-Based Engine)
-POST
-
-/api/tenants/demo_kitchen/daily-runs-graph/
 Example request body:
 
-
+```json
 {
   "date": "2026-01-06",
   "absent": ["Kim", "Spencer"]
 }
+```
+
 Response includes:
 
-out — final station assignments
+- `out` — final station assignments
+- `decision_trace` — engine decision steps
+- `explanations` — human-readable reasoning
+- `metrics` — high-level summary signals
 
-decision_trace — engine decision steps
+---
 
-explanations — human-readable reasoning
+## Project Structure (Simplified)
 
-metrics — high-level summary signals
-
-Project Structure (Simplified)
-
+```text
 sched-mvp/
 ├── app/
 │   ├── generate_day.py        # core scheduling logic
@@ -147,28 +181,31 @@ sched-mvp/
 ├── config/
 │   └── urls.py / settings.py
 └── README.md
-Why Explainability Matters
+```
+
+---
+
+## Why Explainability Matters
+
 Fallback assignments and suboptimal decisions are inevitable in real-world operations.
 
 This MVP ensures that:
 
-every assignment can be explained
-
-missing skills are visible
-
-trade-offs are measurable
+- every assignment can be explained
+- missing skills are visible
+- trade-offs are measurable
 
 Explainability is essential for:
 
-operational trust
+- operational trust
+- debugging rules
+- future AI assistance
+- safe automation
 
-debugging rules
+---
 
-future AI assistance
+## Current Status
 
-safe automation
-
-Current Status
 ✅ Daily scheduling engine
 
 ✅ Explainable decision trace & metrics
@@ -185,13 +222,14 @@ Planned (future):
 
 ⏳ Rich web UI
 
-Disclaimer
+---
+
+## Disclaimer
+
 This repository represents a working engineering MVP, not a final product.
 
 Design choices intentionally favor:
 
-clarity over complexity
-
-explainability over optimization
-
-correctness over UI completeness
+- clarity over complexity
+- explainability over optimization
+- correctness over UI completeness
