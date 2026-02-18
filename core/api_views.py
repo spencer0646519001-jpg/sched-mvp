@@ -127,7 +127,7 @@ def get_run_out(request, run_id: int):
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=404)
 
     out = build_out_from_run(run)
-    presented = present_run_out(date=str(run.date), out=out)
+    presented = present_run_out(date=str(run.start_date), out=out)
 
     payload_ok = present_api_success(
         data={"run_id": run.id, "out": presented},
