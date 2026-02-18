@@ -102,15 +102,31 @@ Use Django as the canonical API/runtime entrypoint:
 
 ---
 
-## Rollback: Legacy FastAPI Server (if needed)
+## Emergency rollback only: Legacy FastAPI runtime
 
-FastAPI implementation remains in `app/` for rollback only.
+FastAPI implementation remains in `app/` as a **rollback-only legacy runtime**.
+
+- **Default policy**: disabled
+- **Enable switch**: `ENABLE_LEGACY_FASTAPI_RUNTIME=1`
+- **Canonical runtime remains Django** (runserver / ASGI / WSGI above)
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+ENABLE_LEGACY_FASTAPI_RUNTIME=1 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Use this only if you need to temporarily switch back from the Django entrypoint.
+### Legacy runtime runbook (short)
+
+Use legacy FastAPI only when all below are true:
+
+1. Django runtime has a production-blocking incident.
+2. You need temporary service continuity while incident mitigation is in progress.
+3. You have an explicit rollback decision recorded by the on-call/owner.
+
+Turn legacy runtime off after incident mitigation:
+
+1. Stop legacy FastAPI process.
+2. Remove `ENABLE_LEGACY_FASTAPI_RUNTIME` from runtime environment.
+3. Start Django runtime again (`python manage.py runserver` or `uvicorn config.asgi:application`).
 
 ---
 

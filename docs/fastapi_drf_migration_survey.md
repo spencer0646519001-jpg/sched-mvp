@@ -112,5 +112,5 @@ Canonical baseline commit used for this survey: `90f09944170679d5385de7aa6470ac5
 - `app/api_llm_patch.py`: `APIRouter`, `HTTPException`
 
 ## FastAPI-specific tests
-- No FastAPI-specific tests found in `test/` or `core/tests.py`.
-- Existing tests focus on engine/presenter logic and not FastAPI endpoint wiring.
+- Survey note (time-bounded): this section was accurate at the baseline commit above, but is now outdated.
+- Current repository has FastAPI-vs-Django parity coverage in `test/test_api_parity.py` (imports `app.main` and uses FastAPI `TestClient`).
