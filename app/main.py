@@ -3,6 +3,7 @@
 # Sched-MVP FastAPI server
 # ---------------------------
 import os
+import sys
 import django
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
@@ -22,6 +23,34 @@ app = FastAPI(
     version="0.2.0",
 )
 
+
+def _is_uvicorn_boot() -> bool:
+    """Return True when process is launched via uvicorn CLI."""
+    argv = [part.lower() for part in sys.argv]
+    return any("uvicorn" in part for part in argv)
+
+
+def _enforce_legacy_runtime_guard() -> None:
+    """
+    Guard legacy FastAPI runtime: only allow explicit rollback enablement.
+
+    Strategy A: keep module importable (`from app.main import app`) and block only
+    when the server is actually being started via uvicorn.
+    """
+    if not _is_uvicorn_boot():
+        return
+
+    if os.getenv("ENABLE_LEGACY_FASTAPI_RUNTIME") == "1":
+        return
+
+    raise RuntimeError(
+        "Legacy FastAPI runtime is rollback-only and disabled by default. "
+        "Start Django runtime instead (e.g. `python manage.py runserver` or "
+        "`uvicorn config.asgi:application`). "
+        "To explicitly enable legacy rollback runtime, set "
+        "ENABLE_LEGACY_FASTAPI_RUNTIME=1."
+    )
+
 # ✅ CORS：給 Next.js 前端用
 app.add_middleware(
     CORSMiddleware,
@@ -35,6 +64,7 @@ app.add_middleware(
 # ✅ 啟動時：初始化 generate_day 需要的 shifts_map（取代以前的 global punch）
 @app.on_event("startup")
 def init_globals():
+    _enforce_legacy_runtime_guard()
     shifts = gd.load_json("shifts.json")
     shifts_map, _ = gd.build_shift_maps(shifts)
     gd.shifts_map = shifts_map
