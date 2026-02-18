@@ -1,5 +1,13 @@
 import os
+import sys
 import pytest
+
+# Mark as legacy by default so normal pytest runs exclude this module via pytest.ini.
+# If this file is explicitly targeted, run it regardless of the default marker filter.
+if any(arg.endswith("test/test_api_parity.py") or arg.endswith("test_api_parity.py") for arg in sys.argv):
+    pytestmark = []
+else:
+    pytestmark = pytest.mark.legacy
 
 
 def _django_setup():

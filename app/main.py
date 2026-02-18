@@ -9,6 +9,14 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
+"""
+FROZEN LEGACY FASTAPI RUNTIME POLICY
+- This FastAPI runtime is rollback-only for emergency incidents.
+- Canonical runtime is Django (config.asgi/config.wsgi/manage.py runserver).
+- Do not add new features/routes here.
+- Only emergency patching is allowed for rollback safety.
+"""
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.api_calendar import router as calendar_router

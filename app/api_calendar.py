@@ -1,3 +1,10 @@
+"""
+FROZEN LEGACY FASTAPI ROUTES
+- Rollback-only runtime surface.
+- Canonical runtime is Django.
+- Do not add new features; only emergency patching is allowed.
+"""
+
 # app/api_calendar.py
 from fastapi import APIRouter
 from app.month_service import build_month
