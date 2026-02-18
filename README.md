@@ -130,6 +130,34 @@ Turn legacy runtime off after incident mitigation:
 
 ---
 
+
+## Legacy FastAPI Freeze Policy
+
+Legacy FastAPI code under `app/` is now **frozen**:
+
+- **Rollback-only** runtime for emergency continuity.
+- **Do not add new features** to FastAPI routes.
+- Only emergency fixes are allowed while Django remains the canonical runtime.
+
+### Test policy
+
+- Daily/default test run (CI/local):
+  ```bash
+  pytest -q
+  ```
+  This excludes legacy parity harness tests by default.
+
+- Manual/release preflight parity check:
+  ```bash
+  pytest -q test/test_api_parity.py
+  ```
+  or
+  ```bash
+  pytest -q -m legacy
+  ```
+
+> Note: FastAPI DeprecationWarning messages are accepted in legacy code and will be addressed when the legacy runtime is removed.
+
 ## Entry Points
 
 ### 1) Django Admin (Data Setup)
