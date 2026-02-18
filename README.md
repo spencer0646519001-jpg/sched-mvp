@@ -145,16 +145,13 @@ Legacy FastAPI code under `app/` is now **frozen**:
   ```bash
   pytest -q
   ```
-  This excludes legacy parity harness tests by default.
+  This intentionally excludes legacy parity tests by default, so Django remains the canonical runtime and to reduce dual-runtime maintenance overhead.
 
-- Manual/release preflight parity check:
-  ```bash
-  pytest -q test/test_api_parity.py
-  ```
-  or
+- Manual/release preflight legacy parity check (recommended and required):
   ```bash
   pytest -q -m legacy
   ```
+  Legacy parity tests are only executed when the `legacy` marker is explicitly selected.
 
 > Note: FastAPI DeprecationWarning messages are accepted in legacy code and will be addressed when the legacy runtime is removed.
 
