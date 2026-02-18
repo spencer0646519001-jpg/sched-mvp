@@ -13,6 +13,13 @@ from core.api_views import (
     api_plan_get_mirror,
     api_plan_list_mirror,
     api_plan_delete_mirror,
+    api_week_mirror,
+    api_week_summary_mirror,
+    api_week_csv_mirror,
+    api_month_mirror,
+    api_month_csv_mirror,
+    api_calendar_month_mirror,
+    api_calendar_month_csv_mirror,
 )
 from core.ui_views import ui_home
 
@@ -37,6 +44,15 @@ urlpatterns = [
     path("plan/get", api_plan_get_mirror, name="api_plan_get_mirror"),
     path("plan/list", api_plan_list_mirror, name="api_plan_list_mirror"),
     path("plan/delete", api_plan_delete_mirror, name="api_plan_delete_mirror"),
+
+    # week/month/calendar endpoints parity mirror (PR-D1)
+    path("week", api_week_mirror, name="api_week_mirror"),
+    path("week/summary", api_week_summary_mirror, name="api_week_summary_mirror"),
+    path("week_csv", api_week_csv_mirror, name="api_week_csv_mirror"),
+    path("month", api_month_mirror, name="api_month_mirror"),
+    path("month_csv", api_month_csv_mirror, name="api_month_csv_mirror"),
+    path("calendar/month", api_calendar_month_mirror, name="api_calendar_month_mirror"),
+    path("calendar/month_csv", api_calendar_month_csv_mirror, name="api_calendar_month_csv_mirror"),
 
     # Existing UI under /api/ui/
     path("ui/", ui_home, name="ui_home"),
