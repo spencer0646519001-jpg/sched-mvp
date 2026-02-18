@@ -1,2 +1,5 @@
-python-dateutil
-pydantic
+Django==6.0
+fastapi
+uvicorn
+pydantic==2.12.5
+python-dateutil==2.9.0.post0
