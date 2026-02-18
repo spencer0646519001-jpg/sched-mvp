@@ -47,6 +47,14 @@ def _assert_parity(fastapi_response, django_response):
     _assert_payload_shape_parity(f_json, d_json)
 
 
+def _assert_csv_parity(fastapi_response, django_response):
+    assert _status_class(fastapi_response.status_code) == _status_class(django_response.status_code)
+    assert "content-type" in {k.lower() for k in fastapi_response.headers.keys()}
+    assert "content-type" in {k.lower() for k in django_response.headers.keys()}
+    assert "content-disposition" in {k.lower() for k in fastapi_response.headers.keys()}
+    assert "content-disposition" in {k.lower() for k in django_response.headers.keys()}
+
+
 def test_plan_endpoints_parity_harness():
     # ---- setup dependencies lazily (avoid pytest collection-time failures) ----
     _django_setup()
@@ -129,3 +137,50 @@ def test_plan_endpoints_parity_harness():
         f_delete_missing = fastapi_client.delete("/api/plan/delete")
         d_delete_missing = django_client.delete("/api/plan/delete")
         _assert_parity(f_delete_missing, d_delete_missing)
+
+
+def test_week_month_calendar_endpoints_parity_harness():
+    _django_setup()
+
+    django_test = pytest.importorskip("django.test")
+    django_utils = pytest.importorskip("django.test.utils")
+    fastapi_testclient = pytest.importorskip("fastapi.testclient")
+
+    Client = django_test.Client
+    override_settings = django_utils.override_settings
+    TestClient = fastapi_testclient.TestClient
+
+    from app.main import app as fastapi_app
+
+    fastapi_client = TestClient(fastapi_app)
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        django_client = Client()
+
+        f_week = fastapi_client.get("/api/week", params={"start_date": "2025-11-10", "days": 7})
+        d_week = django_client.get("/api/week", {"start_date": "2025-11-10", "days": 7})
+        _assert_parity(f_week, d_week)
+
+        f_week_summary = fastapi_client.get("/api/week/summary", params={"start_date": "2025-11-10", "days": 7})
+        d_week_summary = django_client.get("/api/week/summary", {"start_date": "2025-11-10", "days": 7})
+        _assert_parity(f_week_summary, d_week_summary)
+
+        f_month = fastapi_client.get("/api/month", params={"start_date": "2025-11-10"})
+        d_month = django_client.get("/api/month", {"start_date": "2025-11-10"})
+        _assert_parity(f_month, d_month)
+
+        f_calendar_month = fastapi_client.get("/api/calendar/month", params={"start_date": "2025-11-10"})
+        d_calendar_month = django_client.get("/api/calendar/month", {"start_date": "2025-11-10"})
+        _assert_parity(f_calendar_month, d_calendar_month)
+
+        f_week_csv = fastapi_client.get("/api/week_csv", params={"start_date": "2025-11-10", "days": 7})
+        d_week_csv = django_client.get("/api/week_csv", {"start_date": "2025-11-10", "days": 7})
+        _assert_csv_parity(f_week_csv, d_week_csv)
+
+        f_month_csv = fastapi_client.get("/api/month_csv", params={"start_date": "2025-11-10"})
+        d_month_csv = django_client.get("/api/month_csv", {"start_date": "2025-11-10"})
+        _assert_csv_parity(f_month_csv, d_month_csv)
+
+        f_calendar_month_csv = fastapi_client.get("/api/calendar/month_csv", params={"start_date": "2025-11-10"})
+        d_calendar_month_csv = django_client.get("/api/calendar/month_csv", {"start_date": "2025-11-10"})
+        _assert_csv_parity(f_calendar_month_csv, d_calendar_month_csv)
