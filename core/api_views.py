@@ -2,7 +2,7 @@
 import json
 import csv
 import io
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 from django.http import JsonResponse
 from django.http import HttpResponse
@@ -372,6 +372,194 @@ def _generate_month_state(start_date_str: str) -> dict:
         "overtime": overtime,
     }
 
+
+
+
+def _validate_year_month(year_month) -> tuple[str | None, str | None]:
+    if not isinstance(year_month, str) or not year_month:
+        return None, "'year_month' is required (YYYY-MM)"
+
+    try:
+        month_start = datetime.strptime(year_month, "%Y-%m").date().replace(day=1)
+    except ValueError:
+        return None, "Invalid 'year_month' format. Expected YYYY-MM"
+
+    return month_start.isoformat(), None
+
+
+def _validate_leave_requests(leave_requests) -> tuple[dict, dict, str | None]:
+    if leave_requests is None:
+        leave_requests = {}
+
+    if not isinstance(leave_requests, dict):
+        return {}, {}, "'leave_requests' must be dict[str, list[str]]"
+
+    clean_by_person: dict[str, list[str]] = {}
+    by_date: dict[str, list[str]] = {}
+
+    for person, dates in leave_requests.items():
+        if not isinstance(person, str) or not isinstance(dates, list):
+            return {}, {}, "'leave_requests' must be dict[str, list[str]]"
+
+        clean_dates: list[str] = []
+        for date_str in dates:
+            if not isinstance(date_str, str):
+                return {}, {}, "'leave_requests' must be dict[str, list[str]]"
+            try:
+                datetime.strptime(date_str, "%Y-%m-%d")
+            except ValueError:
+                return {}, {}, f"Invalid leave date format: {date_str}"
+            clean_dates.append(date_str)
+
+        dedup_dates = list(dict.fromkeys(clean_dates))
+        clean_by_person[person] = dedup_dates
+        for date_str in dedup_dates:
+            by_date.setdefault(date_str, []).append(person)
+
+    for date_str, names in by_date.items():
+        by_date[date_str] = list(dict.fromkeys(names))
+
+    return clean_by_person, by_date, None
+
+
+def _generate_month_state_with_leave_requests(start_date_str: str, leave_by_date: dict[str, list[str]]) -> dict:
+    original_greedy_assign = gd.greedy_assign
+
+    def _greedy_assign_with_leave(date_str: str, absent):
+        base_absent = absent or []
+        leave_absent = leave_by_date.get(date_str, [])
+        absent_today = list(dict.fromkeys(base_absent + leave_absent))
+        return original_greedy_assign(date_str, absent_today)
+
+    gd.greedy_assign = _greedy_assign_with_leave
+    try:
+        return _generate_month_state(start_date_str)
+    finally:
+        gd.greedy_assign = original_greedy_assign
+
+
+def plan_to_people_grid(month_state, leave_requests):
+    plan = month_state.get("plan", {}) or {}
+    dates = sorted(plan.keys())
+
+    workers = gd.load_json("workers.json").get("people", [])
+    role_by_name = {
+        p.get("name"): p.get("role", "")
+        for p in workers
+        if isinstance(p, dict) and p.get("name")
+    }
+
+    ordered_names = [p.get("name") for p in workers if isinstance(p, dict) and p.get("name")]
+
+    for person in leave_requests.keys():
+        if person not in role_by_name:
+            role_by_name[person] = ""
+        if person not in ordered_names:
+            ordered_names.append(person)
+
+    for date_str in dates:
+        assignments = (plan.get(date_str) or {}).get("assignments", {}) or {}
+        for _, recs in assignments.items():
+            for rec in recs or []:
+                name = rec.get("name")
+                if not name:
+                    continue
+                if name not in role_by_name:
+                    role_by_name[name] = ""
+                if name not in ordered_names:
+                    ordered_names.append(name)
+
+    people = [{"name": name, "role": role_by_name.get(name, "")} for name in ordered_names]
+
+    leave_by_person = {name: set(dates_list) for name, dates_list in leave_requests.items()}
+
+    grid: dict[str, dict[str, dict]] = {name: {} for name in ordered_names}
+    warnings: list[str] = list(month_state.get("warnings", []) or [])
+
+    for date_str in dates:
+        day_plan = plan.get(date_str, {}) or {}
+        for warning in day_plan.get("warnings", []) or []:
+            warnings.append(f"{date_str}:{warning}")
+
+        assignments = day_plan.get("assignments", {}) or {}
+        per_person: dict[str, dict] = {}
+        per_person_count: dict[str, int] = {}
+
+        for station, recs in assignments.items():
+            for rec in recs or []:
+                name = rec.get("name")
+                if not name:
+                    continue
+
+                per_person_count[name] = per_person_count.get(name, 0) + 1
+
+                notes = rec.get("notes", [])
+                if isinstance(notes, list):
+                    note_list = notes
+                elif notes:
+                    note_list = [str(notes)]
+                else:
+                    note_list = []
+
+                if name not in per_person:
+                    per_person[name] = {
+                        "code": rec.get("shift", ""),
+                        "station": station,
+                        "notes": note_list,
+                    }
+
+        for name, count in per_person_count.items():
+            if count > 1:
+                warnings.append(f"MULTI_ASSIGN:{name}:{date_str}")
+
+        for name in ordered_names:
+            if name in per_person:
+                grid[name][date_str] = per_person[name]
+            elif date_str in leave_by_person.get(name, set()):
+                grid[name][date_str] = {"code": "OFF", "station": "", "notes": []}
+            else:
+                grid[name][date_str] = {"code": "", "station": "", "notes": []}
+
+    return {
+        "meta": {
+            "month_start": month_state.get("month_start"),
+            "month_end": month_state.get("month_end"),
+            "language": month_state.get("language", "ja"),
+        },
+        "dates": dates,
+        "people": people,
+        "grid": grid,
+        "warnings": warnings,
+        "summary": month_state.get("summary", {}),
+        "overtime": month_state.get("overtime", {}),
+    }
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_monthly_preview_mirror(request):
+    payload, payload_err = _parse_request_payload(request)
+    if payload_err:
+        return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    start_date, date_err = _validate_year_month(payload.get("year_month"))
+    if date_err:
+        return JsonResponse({"detail": date_err}, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    leave_requests, leave_by_date, leave_err = _validate_leave_requests(payload.get("leave_requests"))
+    if leave_err:
+        return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    language = payload.get("language") or "ja"
+
+    month_state = _generate_month_state_with_leave_requests(start_date, leave_by_date)
+    month_state["language"] = language
+
+    return JsonResponse(
+        plan_to_people_grid(month_state, leave_requests),
+        json_dumps_params={"ensure_ascii": False},
+        status=200,
+    )
 
 @require_http_methods(["GET"])
 def api_month_mirror(request):

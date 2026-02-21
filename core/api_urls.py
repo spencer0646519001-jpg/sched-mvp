@@ -20,6 +20,7 @@ from core.api_views import (
     api_month_csv_mirror,
     api_calendar_month_mirror,
     api_calendar_month_csv_mirror,
+    api_monthly_preview_mirror,
 )
 from core.ui_views import ui_home
 
@@ -53,6 +54,7 @@ urlpatterns = [
     path("month_csv", api_month_csv_mirror, name="api_month_csv_mirror"),
     path("calendar/month", api_calendar_month_mirror, name="api_calendar_month_mirror"),
     path("calendar/month_csv", api_calendar_month_csv_mirror, name="api_calendar_month_csv_mirror"),
+    path("monthly/preview", api_monthly_preview_mirror, name="api_monthly_preview_mirror"),
 
     # Existing UI under /api/ui/
     path("ui/", ui_home, name="ui_home"),
