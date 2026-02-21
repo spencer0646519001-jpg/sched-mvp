@@ -432,10 +432,12 @@ def _validate_leave_requests(leave_requests) -> tuple[dict, dict, str | None]:
 def _generate_month_state_with_leave_requests(start_date_str: str, leave_by_date: dict[str, list[str]]) -> dict:
     original_greedy_assign = gd.greedy_assign
 
+    def _merge_absent_for_date(absent: list[str] | None, leave_absent: list[str]) -> list[str]:
+        return list(dict.fromkeys((absent or []) + leave_absent))
+
     def _greedy_assign_with_leave(date_str: str, absent):
-        base_absent = absent or []
         leave_absent = leave_by_date.get(date_str, [])
-        absent_today = list(dict.fromkeys(base_absent + leave_absent))
+        absent_today = _merge_absent_for_date(absent, leave_absent)
         return original_greedy_assign(date_str, absent_today)
 
     gd.greedy_assign = _greedy_assign_with_leave
