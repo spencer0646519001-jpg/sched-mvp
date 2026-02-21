@@ -38,6 +38,20 @@ def test_monthly_preview_success_shape_and_off_code():
     assert "2025-11-05" in data["dates"]
     assert "Spencer" in data["grid"]
     assert data["grid"]["Spencer"]["2025-11-05"]["code"] == "OFF"
+    assert "people_grid" in data
+    assert "legend" in data
+    assert "" in data["legend"]
+    assert "OFF" in data["legend"]
+
+    grid_codes = {
+        cell.get("code", "")
+        for row in data["people_grid"].get("rows", [])
+        for cell in row.get("cells", [])
+        if cell.get("code", "")
+    }
+    known_codes = {"A", "B", "C", "D", "1", "2", "3", "4"}
+    if grid_codes.intersection(known_codes):
+        assert any(code in data["legend"] for code in grid_codes.intersection(known_codes))
 
 
 def test_monthly_preview_invalid_year_month_returns_400():

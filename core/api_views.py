@@ -19,7 +19,6 @@ from app.presenter import (
     present_api_success,
     present_api_error,
 )
-from app.langgraph_flow import run_daily_schedule_graph
 from app import generate_day as gd
 from app.plan_service import (
     create_plan,
@@ -31,6 +30,12 @@ from app.plan_service import (
 )
 from app.generate_week import generate_week, summarize_week
 from app.month_service import build_month
+from core.shift_defs import (
+    ShiftDefsInvalid,
+    ShiftDefsNotFound,
+    build_shift_legend,
+    load_shift_defs,
+)
 
 
 @require_http_methods(["GET"])
@@ -172,6 +177,8 @@ def create_daily_run_graph(request, tenant_name: str):
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
 
     # 3) run LangGraph (greedy inside)
+    from app.langgraph_flow import run_daily_schedule_graph
+
     result = run_daily_schedule_graph(
     tenant_name=tenant_name,
     date_str=date_str,
@@ -438,6 +445,78 @@ def _generate_month_state_with_leave_requests(start_date_str: str, leave_by_date
         gd.greedy_assign = original_greedy_assign
 
 
+def _month_dates(month_state: dict) -> list[str]:
+    month_start = month_state.get("month_start")
+    month_end = month_state.get("month_end")
+    if not month_start or not month_end:
+        return []
+
+    cur = datetime.strptime(month_start, "%Y-%m-%d").date()
+    end = datetime.strptime(month_end, "%Y-%m-%d").date()
+    dates: list[str] = []
+    while cur <= end:
+        dates.append(cur.isoformat())
+        cur += timedelta(days=1)
+    return dates
+
+
+def _to_grid_role(role: str) -> str:
+    normalized = (role or "").strip().lower()
+    if normalized == "chef":
+        return "chef"
+    if normalized:
+        return "staff"
+    return "unknown"
+
+
+def _build_people_grid_and_legend(
+    month_state: dict,
+    ordered_names: list[str],
+    role_by_name: dict[str, str],
+    grid: dict[str, dict[str, dict]],
+) -> tuple[dict, dict]:
+    dates = _month_dates(month_state)
+    year_month = (month_state.get("month_start") or "")[:7]
+
+    rows: list[dict] = []
+    used_codes: set[str] = set()
+    for name in ordered_names:
+        cells: list[dict] = []
+        for date_str in dates:
+            source = (grid.get(name) or {}).get(date_str) or {}
+            code = str(source.get("code", "") or "")
+            note_list = source.get("notes", [])
+            if isinstance(note_list, list):
+                note = " | ".join(str(x) for x in note_list if x)
+            elif note_list:
+                note = str(note_list)
+            else:
+                note = ""
+
+            if code:
+                used_codes.add(code)
+            cells.append({"code": code, "note": note})
+
+        rows.append(
+            {
+                "name": name,
+                "role": _to_grid_role(role_by_name.get(name, "")),
+                "cells": cells,
+            }
+        )
+
+    legend = build_shift_legend(load_shift_defs())
+    for code in sorted(used_codes):
+        if code not in legend:
+            legend[code] = {"label": "Shift code"}
+
+    return {
+        "year_month": year_month,
+        "dates": dates,
+        "rows": rows,
+    }, legend
+
+
 def plan_to_people_grid(month_state, leave_requests):
     plan = month_state.get("plan", {}) or {}
     dates = sorted(plan.keys())
@@ -520,6 +599,8 @@ def plan_to_people_grid(month_state, leave_requests):
             else:
                 grid[name][date_str] = {"code": "", "station": "", "notes": []}
 
+    people_grid, legend = _build_people_grid_and_legend(month_state, ordered_names, role_by_name, grid)
+
     return {
         "meta": {
             "month_start": month_state.get("month_start"),
@@ -532,6 +613,8 @@ def plan_to_people_grid(month_state, leave_requests):
         "warnings": warnings,
         "summary": month_state.get("summary", {}),
         "overtime": month_state.get("overtime", {}),
+        "people_grid": people_grid,
+        "legend": legend,
     }
 
 
@@ -555,11 +638,51 @@ def api_monthly_preview_mirror(request):
     month_state = _generate_month_state_with_leave_requests(start_date, leave_by_date)
     month_state["language"] = language
 
-    return JsonResponse(
-        plan_to_people_grid(month_state, leave_requests),
-        json_dumps_params={"ensure_ascii": False},
-        status=200,
-    )
+    try:
+        result = plan_to_people_grid(month_state, leave_requests)
+    except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
+        return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
+
+    return JsonResponse(result, json_dumps_params={"ensure_ascii": False}, status=200)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_monthly_export_csv(request):
+    payload, payload_err = _parse_request_payload(request)
+    if payload_err:
+        return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    start_date, date_err = _validate_year_month(payload.get("year_month"))
+    if date_err:
+        return JsonResponse({"detail": date_err}, json_dumps_params={"ensure_ascii": False}, status=400)
+    validated_year_month = datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m")
+
+    month_state = _generate_month_state(start_date)
+    month_state["language"] = payload.get("language") or "ja"
+
+    try:
+        preview = plan_to_people_grid(month_state, {})
+    except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
+        return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
+
+    people_grid = preview.get("people_grid", {})
+    dates = people_grid.get("dates", [])
+    rows = people_grid.get("rows", [])
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["name", "role", *dates])
+    for row in rows:
+        cells = row.get("cells", [])
+        writer.writerow(
+            [row.get("name", ""), row.get("role", "")]
+            + [((cell or {}).get("code", "")) for cell in cells]
+        )
+
+    response = HttpResponse(buf.getvalue(), content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="monthly_{validated_year_month}.csv"'
+    return response
 
 @require_http_methods(["GET"])
 def api_month_mirror(request):

@@ -1,0 +1,42 @@
+import csv
+import io
+import json
+import os
+
+from django.test import Client
+from django.test.utils import override_settings
+import django
+
+
+def _django_setup():
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+    django.setup()
+
+
+def test_monthly_export_csv_success():
+    _django_setup()
+
+    payload = {
+        "year_month": "2025-11",
+        "language": "ja",
+        "leave_requests": {"Spencer": ["2025-11-05"]},
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/export.csv",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    assert "text/csv" in response["Content-Type"]
+
+    text = response.content.decode("utf-8")
+    rows = list(csv.reader(io.StringIO(text)))
+    assert len(rows) >= 2
+
+    header = rows[0]
+    assert header[0:2] == ["name", "role"]
+    assert any(col.startswith("2025-11-") for col in header[2:])
