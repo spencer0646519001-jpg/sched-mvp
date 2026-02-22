@@ -1,4 +1,4 @@
-Django==6.0
+Django==5.2.1
 fastapi
 uvicorn
 pydantic==2.12.5

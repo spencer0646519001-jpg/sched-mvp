@@ -87,6 +87,18 @@ Server will be available at:
 http://127.0.0.1:8000/
 ```
 
+### Run with Docker (canonical container entrypoint)
+
+```bash
+docker compose up --build
+```
+
+Server will be available at:
+
+```text
+http://127.0.0.1:8000/
+```
+
 ### Runtime entrypoints (deployment)
 
 Use Django as the canonical API/runtime entrypoint:
@@ -172,6 +184,7 @@ All scheduling logic depends on this data. No station names or assignments are h
 ### 2) Simple UI (API Driver / Demo)
 
 - `http://127.0.0.1:8000/api/ui/`
+- `http://127.0.0.1:8000/ui/monthly`
 
 Purpose:
 

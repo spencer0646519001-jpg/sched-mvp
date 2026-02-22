@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Monthly Schedule UI</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --line: #dde2ee;
+      --text: #1c2333;
+      --muted: #5b647a;
+      --error: #b00020;
+      --accent: #0b5bd3;
+    }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(180deg, #f4f7ff 0%, #f6f7fb 100%);
+      color: var(--text);
+      font-family: "Segoe UI", "Noto Sans", sans-serif;
+    }
+    .card {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .full { grid-column: 1 / -1; }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    input, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      font: inherit;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: #fff;
+      background: var(--accent);
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #34405e;
+    }
+    button[disabled], textarea[disabled] {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 6px;
+    }
+    .error {
+      color: var(--error);
+      font-weight: 600;
+      margin-top: 10px;
+    }
+    .table-wrap {
+      margin-top: 14px;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    table {
+      border-collapse: collapse;
+      min-width: 900px;
+      width: 100%;
+      background: #fff;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      padding: 8px;
+      white-space: nowrap;
+      text-align: center;
+      font-size: 13px;
+    }
+    th:first-child, td:first-child {
+      position: sticky;
+      left: 0;
+      background: #f8f9fc;
+      text-align: left;
+      font-weight: 600;
+    }
+    .section-title {
+      margin-top: 20px;
+      margin-bottom: 8px;
+    }
+    #diff_preview {
+      margin-top: 8px;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      color: var(--muted);
+      background: #fafbfe;
+    }
+    @media (max-width: 760px) {
+      .controls {
+        grid-template-columns: 1fr;
+      }
+      .actions {
+        flex-direction: column;
+      }
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Monthly Schedule Preview</h1>
+    <form method="post">
+      {% csrf_token %}
+      <div class="controls">
+        <div>
+          <label for="year_month">year_month (YYYY-MM)</label>
+          <input id="year_month" name="year_month" value="{{ year_month }}" required />
+        </div>
+        <div>
+          <label for="language">language</label>
+          <input id="language" name="language" value="{{ language|default:'ja' }}" />
+        </div>
+        <div class="full">
+          <label for="leave_requests">leave_requests (JSON dict[str, list[str]])</label>
+          <textarea id="leave_requests" name="leave_requests" rows="5">{{ leave_requests_raw }}</textarea>
+          <div class="hint">Example: {"Spencer": ["2025-11-05"]}</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="submit" name="action" value="preview">Preview</button>
+        <button type="submit" name="action" value="download" class="secondary">Download CSV</button>
+      </div>
+    </form>
+
+    {% if error_message %}
+      <div class="error">{{ error_message }}</div>
+    {% endif %}
+
+    <h2 class="section-title">Refine Schedule (Coming Soon)</h2>
+    <label for="refine_text">refine_text</label>
+    <textarea id="refine_text" rows="3" disabled placeholder="Coming soon"></textarea>
+    <label for="refine_voice" style="margin-top:8px;">refine_voice</label>
+    <button id="refine_voice" type="button" disabled>Voice Input (Coming Soon)</button>
+    <div id="diff_preview">diff_preview placeholder</div>
+
+    {% if preview_data and preview_data.people_grid %}
+      <h2 class="section-title">People Grid</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              {% for date in preview_data.people_grid.dates %}
+                <th>{{ date }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preview_data.people_grid.rows %}
+              <tr>
+                <td>{{ row.name }} ({{ row.role }})</td>
+                {% for cell in row.cells %}
+                  <td title="{{ cell.note }}">{{ cell.code }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+</body>
+</html>

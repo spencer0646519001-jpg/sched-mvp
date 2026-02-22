@@ -1,0 +1,9 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings
+      - ALLOWED_HOSTS=127.0.0.1,localhost,0.0.0.0,web
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
