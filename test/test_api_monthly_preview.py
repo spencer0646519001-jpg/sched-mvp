@@ -80,3 +80,69 @@ def test_monthly_preview_invalid_leave_requests_returns_400():
         )
 
     assert response.status_code == 400
+
+
+def test_monthly_preview_weekly_rest_warnings_for_full_week(monkeypatch):
+    _django_setup()
+
+    import core.api_views as api_views
+
+    week_dates = [
+        "2026-01-26",
+        "2026-01-27",
+        "2026-01-28",
+        "2026-01-29",
+        "2026-01-30",
+        "2026-01-31",
+        "2026-02-01",
+    ]
+
+    plan = {}
+    for date_str in week_dates[:-1]:
+        plan[date_str] = {
+            "assignments": {
+                "gateau": [{"name": "Spencer", "shift": "A"}],
+            },
+            "warnings": [],
+            "chefs_present": [],
+        }
+    plan[week_dates[-1]] = {
+        "assignments": {},
+        "warnings": [],
+        "chefs_present": [],
+    }
+
+    fake_state = {
+        "month_start": week_dates[0],
+        "month_end": week_dates[-1],
+        "plan": plan,
+        "summary": {},
+        "overtime": {},
+    }
+
+    monkeypatch.setattr(
+        api_views,
+        "_generate_month_state_with_leave_requests",
+        lambda start_date_str, leave_by_date: fake_state,
+    )
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/preview",
+            data=json.dumps({"year_month": "2026-01", "leave_requests": {}}),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    data = json.loads(response.content.decode("utf-8"))
+
+    assert "weekly_rest_warnings" in data
+    assert any(
+        w.get("type") == "weekly_rest"
+        and w.get("person") == "Spencer"
+        and w.get("week") == "2026-W05"
+        and w.get("days_off") == 1
+        and w.get("required") == 2
+        for w in data["weekly_rest_warnings"]
+    )

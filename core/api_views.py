@@ -519,6 +519,54 @@ def _build_people_grid_and_legend(
     }, legend
 
 
+
+def _build_weekly_rest_warnings_from_people_grid(people_grid: dict) -> list[dict]:
+    dates = people_grid.get("dates", []) or []
+    rows = people_grid.get("rows", []) or []
+
+    week_to_indices: dict[str, list[int]] = {}
+    for idx, date_str in enumerate(dates):
+        try:
+            d = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        iso_year, iso_week, _ = d.isocalendar()
+        week_key = f"{iso_year}-W{iso_week:02d}"
+        week_to_indices.setdefault(week_key, []).append(idx)
+
+    warnings: list[dict] = []
+    for week_key, indices in sorted(week_to_indices.items()):
+        # Avoid month-boundary false positives: only validate full 7-day ISO weeks.
+        if len(indices) != 7:
+            continue
+
+        for row in rows:
+            name = row.get("name")
+            if not name:
+                continue
+
+            cells = row.get("cells", []) or []
+            worked = 0
+            for cell_idx in indices:
+                if cell_idx < len(cells):
+                    code = str((cells[cell_idx] or {}).get("code", "") or "").strip()
+                    if code:
+                        worked += 1
+
+            days_off = 7 - worked
+            if days_off < 2:
+                warnings.append(
+                    {
+                        "type": "weekly_rest",
+                        "person": name,
+                        "week": week_key,
+                        "days_off": days_off,
+                        "required": 2,
+                    }
+                )
+
+    return warnings
+
 def plan_to_people_grid(month_state, leave_requests):
     plan = month_state.get("plan", {}) or {}
     dates = sorted(plan.keys())
@@ -602,6 +650,7 @@ def plan_to_people_grid(month_state, leave_requests):
                 grid[name][date_str] = {"code": "", "station": "", "notes": []}
 
     people_grid, legend = _build_people_grid_and_legend(month_state, ordered_names, role_by_name, grid)
+    weekly_rest_warnings = _build_weekly_rest_warnings_from_people_grid(people_grid)
 
     return {
         "meta": {
@@ -613,6 +662,7 @@ def plan_to_people_grid(month_state, leave_requests):
         "people": people,
         "grid": grid,
         "warnings": warnings,
+        "weekly_rest_warnings": weekly_rest_warnings,
         "summary": month_state.get("summary", {}),
         "overtime": month_state.get("overtime", {}),
         "people_grid": people_grid,
@@ -764,3 +814,4 @@ def api_calendar_month_csv_mirror(request):
     response = HttpResponse(buf.getvalue(), content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="month_{start_date}.csv"'
     return response
+
