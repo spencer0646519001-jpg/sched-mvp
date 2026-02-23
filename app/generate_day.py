@@ -114,6 +114,17 @@ def pick_shift_for(
         allowed = {"A", "B", "C", "D", "1", "2", "3", "4"}
     else:
         allowed = {"A", "B", "C", "D"}
+    
+    # --- per-person hard constraint: allowed_shifts ---
+    
+    person_allowed_raw = person.get("allowed_shifts") or []
+    person_allowed = {str(s).upper() for s in person_allowed_raw if str(s).strip()}
+
+    if person_allowed:
+        intersect = allowed & person_allowed
+        # 保守退回：交集為空就不要擋，改用全域 allowed
+        if intersect:
+            allowed = intersect
 
     prefs = person.get("shift_prefs") or []
     prefs = [str(p).upper() for p in prefs]  # 小寫轉大寫
