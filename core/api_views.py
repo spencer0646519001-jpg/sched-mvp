@@ -177,7 +177,21 @@ def create_daily_run_graph(request, tenant_name: str):
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
 
     # 3) run LangGraph (greedy inside)
-    from app.langgraph_flow import run_daily_schedule_graph
+    try:
+        from app.langgraph_flow import run_daily_schedule_graph
+    except ModuleNotFoundError as e:
+        if "langgraph" in str(e):
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "detail": "langgraph not installed",
+                    "error": str(e),
+                    "hint": "Install optional dependency 'langgraph' to enable this endpoint.",
+                },
+                status=501,
+                json_dumps_params={"ensure_ascii": False},
+            )
+        raise
 
     result = run_daily_schedule_graph(
     tenant_name=tenant_name,
