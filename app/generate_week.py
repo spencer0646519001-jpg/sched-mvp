@@ -1,7 +1,7 @@
 # app/generate_week.py
 # -----------------------------------------------
-# 一週排班：呼叫現有的 greedy_assign() 跑連續多天
-# A+ 版本：支援「從上一週承接連續上班天數」
+# Week-level schedule generator based on generate_day.greedy_assign().
+# Supports continuity by carrying selected state across week boundaries.
 # -----------------------------------------------
 
 import json
@@ -10,9 +10,10 @@ from datetime import timedelta
 from dateutil import parser as dtparser
 from typing import Dict, List
 
-# 從單日排班引擎匯入：沿用你現在穩定的 generate_day 邏輯
+# Use generate_day utilities and shared module-level state for day planning.
 from . import generate_day as gd
 from app.week_utils import pick_chefs_for_day, CHEF_LIST
+from app.infra.engine_inputs import build_inputs_from_json
 
 import csv
 from pathlib import Path
@@ -26,16 +27,16 @@ def load_rules():
         return json.load(f)
 
 
-# -------- 一週狀態初始化 --------
+# -------- Week State Initialization --------
 def init_week_state(people: List[dict]) -> dict:
     """
-    週狀態（state）包含：
-      - days_worked: 每個人本「週」已上班天數
-      - days_off: 每個人本「週」已休假天數
-      - consecutive_days: 連續上班天數（A+：支援跨週延續）
-      - weekly_hours: 本週累積工時
-      - shift_count: 班別使用次數（目前還沒用到，但保留）
-      - week_plan: 每天的排班結果（date_str -> plan）
+    Build an empty week state:
+      - days_worked: number of worked days per person
+      - days_off: number of off days per person
+      - consecutive_days: current consecutive-workday streak
+      - weekly_hours: accumulated weekly hours
+      - shift_count: per-shift counter placeholder
+      - week_plan: date_str -> day plan
     """
     names = [p["name"] for p in people]
 
@@ -51,10 +52,10 @@ def init_week_state(people: List[dict]) -> dict:
     }
 
 
-# -------- 根據單日結果更新一週狀態 --------
+# -------- Week State Update After Each Day --------
 def update_week_state(state: dict, day_result: dict) -> None:
     """
-    根據某一天的排班結果，更新：
+    Merge one day result into week state:
       - days_worked / days_off
       - consecutive_days
       - weekly_hours
@@ -62,7 +63,7 @@ def update_week_state(state: dict, day_result: dict) -> None:
     assignments: Dict[str, List[dict]] = day_result.get("assignments", {})
     hours_estimate: Dict[str, float] = day_result.get("hours_estimate", {})
 
-    # 今天有出勤的人（員工）
+    # Regular station assignments (with estimated hours)
     worked_today = set()
     for station_recs in assignments.values():
         for rec in station_recs:
@@ -75,16 +76,16 @@ def update_week_state(state: dict, day_result: dict) -> None:
             h = float(hours_estimate.get(name, 0.0))
             state["weekly_hours"][name] += h
 
-    # 今天有出勤的主廚
+    # Chef attendance tracked separately
     chefs_today = day_result.get("chefs_present", [])
     for name in chefs_today:
         state["days_worked"][name] += 1
         state["consecutive_days"][name] += 1
-        # 主廚工時先固定 10 小時（之後若要細修再說）
+        # Current policy: each chef day contributes 10 hours
         state["weekly_hours"][name] += 10.0
         worked_today.add(name)
 
-    # 沒有出勤的人：視為休假一天，連續上班歸零
+    # Everyone not marked as worked today is treated as off
     everyone = set(state["days_worked"].keys())
     absent_today = everyone - worked_today
     for name in absent_today:
@@ -92,99 +93,106 @@ def update_week_state(state: dict, day_result: dict) -> None:
         state["consecutive_days"][name] = 0
 
 
-# -------- 一週排班主流程（A+：可以接上一週的 state） --------
+# -------- Week Generation --------
 def generate_week(
     start_date_str: str,
     num_days: int = 7,
     prev_state: dict | None = None,
+    leave_by_date: dict[str, list[str]] | None = None,
 ) -> dict:
     """
-    從 start_date 起算 num_days 天，逐日呼叫 greedy_assign 產生排班，
-    同時維護一週的統計狀態。
+    Generate a schedule from start_date for num_days using greedy assignment.
+    State is carried forward to preserve continuity across weekly chunks.
 
-    A+ 重點：
-      - 若有 prev_state，會「承接前一週的 consecutive_days」，
-        讓跨週的連續上班天數不會被歸零，避免連上 7 天。
-      - days_worked / days_off / weekly_hours 在每一週內還是重新計算，
-        保持原本「一週為單位」的邏輯（例如主廚 max_days_per_week）。
+    Continuity behavior:
+      - If prev_state is provided, consecutive_days is inherited so streak-based
+        constraints are not reset at each 7-day boundary.
+      - days_worked / days_off / weekly_hours are tracked per generated chunk.
+        Chef max-days checks are handled by helper utilities.
     """
 
-    # 1) 載入人員資料（沿用 workers.json）
-    people = gd.load_json("workers.json")["people"]
+    # 1) Load normalized inputs (people, shifts, rules)
+    inputs = build_inputs_from_json()
+    people = inputs.people
     names = [p["name"] for p in people]
-    rules = load_rules()
+    rules = inputs.rules
     max_consec_days = rules.get("max_consecutive_days", 4)
 
-    # 2) 初始化一週狀態，若有上一週則承接「連續上班天數」
+    # 2) Initialize week state, optionally inheriting continuity fields
     state = init_week_state(people)
 
     if prev_state is not None:
-        # 承接跨週的 consecutive_days
+        # Carry over consecutive-day counters from previous chunk
         prev_consec = prev_state.get("consecutive_days", {})
         for n in names:
             if n in prev_consec:
                 state["consecutive_days"][n] = prev_consec[n]
-        # 其他例如 days_worked / weekly_hours 維持「本週重新起算」
+        # Keep days_worked / weekly_hours local to this generated chunk
 
-    # 3) 幫 generate_day 準備好全域 shifts_map & week_state
-    globals_shifts = gd.load_json("shifts.json")
-    shifts_map, _ = gd.build_shift_maps(globals_shifts)
+    # 3) Prepare generate_day globals consumed by assignment scoring
+    shifts_map, _ = gd.build_shift_maps(inputs.shifts_list)
     gd.shifts_map = shifts_map
-    gd.week_state = state  # greedy_assign 裡的 weekly_penalty 用得到
+    gd.week_state = state  # Used by greedy_assign for weekly penalty context
 
-    # 4) 建立日期清單：連續 num_days 天
+    # 4) Build target date list for this chunk
     start_date = dtparser.parse(start_date_str).date()
     days: List[str] = [
         (start_date + timedelta(days=i)).isoformat() for i in range(num_days)
     ]
 
-    # 5) 主迴圈：逐日呼叫 greedy_assign
+    # 5) Iterate day by day and assign shifts
+    leave_by_date = leave_by_date or {}
     for date_str in days:
-        # 5-1) 員工強制休息（不包含主廚）
+        # 5-1) Auto-rest non-chef staff at max consecutive-day limit
         forced_rest = [
             name
             for name, consec in state["consecutive_days"].items()
             if consec >= max_consec_days and name not in CHEF_LIST
         ]
 
-        # 5-2) 先讓 greedy_assign 根據 absent 生成人員與站位（不含主廚）
-        day_plan = gd.greedy_assign(date_str, absent=forced_rest)
+        # 5-2) Merge auto-rest and leave requests into absent list
+        absent_today = list(dict.fromkeys((forced_rest or []) + leave_by_date.get(date_str, [])))
+        day_plan = gd.greedy_assign_with_inputs(
+            date_str,
+            absent=absent_today,
+            inputs=inputs,
+        )
 
         day_plan.setdefault("warnings", [])
 
         if forced_rest:
             day_plan["warnings"].append("AUTO_REST:" + ",".join(forced_rest))
 
-        # 5-3) 根據今天是不是假日，決定主廚 present
+        # 5-3) Select chefs present for the day
         is_holiday = day_plan.get("is_holiday", False)
         chefs_present, chef_warnings = pick_chefs_for_day(
             is_holiday=is_holiday,
             state=state,
             all_chefs=CHEF_LIST,
-            max_days_per_week=5,  # 一週最多 5 天（仍以「這週」為單位）
+            max_days_per_week=5,  # Current policy: chef max working days per week
         )
 
         day_plan["chefs_present"] = chefs_present
         day_plan["warnings"].extend(chef_warnings)
 
-        # 5-4) 存進週計畫
+        # 5-4) Store daily plan
         state["week_plan"][date_str] = day_plan
 
-        # 5-5) 更新週統計
+        # 5-5) Update cumulative week state
         update_week_state(state, day_plan)
 
     return state
 
 
-# -------- 簡單週總結（方便人眼檢查） --------
+# -------- Weekly Summary --------
 
 from typing import Dict
 
 
 def summarize_week(state: dict) -> Dict[str, dict]:
     """
-    給 API 用的「一週 summary」：
-    回傳格式：
+    Build per-person summary payload for API responses.
+    Example:
     {
         "Spencer": {"days": 5, "hours": 45.0},
         "Ishikawa": {"days": 6, "hours": 52.0},
@@ -258,15 +266,15 @@ def save_week_csv(state: dict, out_path="week.csv"):
         writer.writerows(rows)
 
 
-# -------- CLI 入口 --------
+# -------- CLI --------
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("start_date", help="週開始日期 YYYY-MM-DD，例如 2025-11-10")
+    ap.add_argument("start_date", help="Start date in YYYY-MM-DD format, e.g. 2025-11-10")
     ap.add_argument(
         "--days",
         type=int,
         default=7,
-        help="要產生的天數（預設 7 天，一週）",
+        help="Number of days to generate (default: 7)",
     )
     args = ap.parse_args()
 
@@ -278,3 +286,4 @@ if __name__ == "__main__":
 
     print("\n[WEEK_STATE_SUMMARY]")
     print_week_summary(week_state, args.start_date, args.days)
+

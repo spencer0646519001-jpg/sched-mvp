@@ -343,7 +343,10 @@ def api_week_csv_mirror(request):
     return response
 
 
-def _generate_month_state(start_date_str: str) -> dict:
+def _generate_month_state(
+    start_date_str: str,
+    leave_by_date: dict[str, list[str]] | None = None,
+) -> dict:
     base_date = dtparser.parse(start_date_str).date()
     month_start = base_date.replace(day=1)
 
@@ -362,7 +365,12 @@ def _generate_month_state(start_date_str: str) -> dict:
         days_left = (month_end - cur).days + 1
         chunk_days = min(7, days_left)
 
-        week_state = generate_week(cur.isoformat(), num_days=chunk_days, prev_state=prev_state)
+        week_state = generate_week(
+            cur.isoformat(),
+            num_days=chunk_days,
+            prev_state=prev_state,
+            leave_by_date=leave_by_date,
+        )
         month_plan.update(week_state["week_plan"])
 
         week_summary = summarize_week(week_state)
@@ -444,21 +452,7 @@ def _validate_leave_requests(leave_requests) -> tuple[dict, dict, str | None]:
 
 
 def _generate_month_state_with_leave_requests(start_date_str: str, leave_by_date: dict[str, list[str]]) -> dict:
-    original_greedy_assign = gd.greedy_assign
-
-    def _merge_absent_for_date(absent: list[str] | None, leave_absent: list[str]) -> list[str]:
-        return list(dict.fromkeys((absent or []) + leave_absent))
-
-    def _greedy_assign_with_leave(date_str: str, absent):
-        leave_absent = leave_by_date.get(date_str, [])
-        absent_today = _merge_absent_for_date(absent, leave_absent)
-        return original_greedy_assign(date_str, absent_today)
-
-    gd.greedy_assign = _greedy_assign_with_leave
-    try:
-        return _generate_month_state(start_date_str)
-    finally:
-        gd.greedy_assign = original_greedy_assign
+    return _generate_month_state(start_date_str, leave_by_date=leave_by_date)
 
 
 def _month_dates(month_state: dict) -> list[str]:

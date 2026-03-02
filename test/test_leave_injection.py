@@ -112,20 +112,11 @@ def _load_api_views_unit(monkeypatch):
 def test_leave_merge_and_dedup(monkeypatch):
     api_views = _load_api_views_unit(monkeypatch)
 
-    observed_absent = {}
+    observed = {}
 
-    def original_greedy_assign(date_str, absent):
-        observed_absent[date_str] = list(absent or [])
-        return {
-            "date": date_str,
-            "assignments": {},
-            "hours_estimate": {},
-            "warnings": [],
-            "is_holiday": False,
-        }
-
-    def fake_generate_month_state(_start_date_str):
-        api_views.gd.greedy_assign("2025-11-05", ["Kim", "Kim", "Lee"])
+    def fake_generate_month_state(start_date_str, leave_by_date=None):
+        observed["start_date_str"] = start_date_str
+        observed["leave_by_date"] = leave_by_date
         return {
             "month_start": "2025-11-01",
             "month_end": "2025-11-30",
@@ -134,7 +125,6 @@ def test_leave_merge_and_dedup(monkeypatch):
             "overtime": {},
         }
 
-    monkeypatch.setattr(api_views.gd, "greedy_assign", original_greedy_assign)
     monkeypatch.setattr(api_views, "_generate_month_state", fake_generate_month_state)
 
     api_views._generate_month_state_with_leave_requests(
@@ -142,31 +132,20 @@ def test_leave_merge_and_dedup(monkeypatch):
         {"2025-11-05": ["Kim", "Ana", "Ana"]},
     )
 
-    assert observed_absent["2025-11-05"] == ["Kim", "Lee", "Ana"]
+    assert observed["start_date_str"] == "2025-11-01"
+    assert observed["leave_by_date"] == {"2025-11-05": ["Kim", "Ana", "Ana"]}
 
 
-def test_greedy_assign_restored_after_exception(monkeypatch):
+def test_generate_month_state_with_leave_requests_propagates_exceptions(monkeypatch):
     api_views = _load_api_views_unit(monkeypatch)
 
-    def original_greedy_assign(date_str, absent):
-        return {
-            "date": date_str,
-            "assignments": {},
-            "hours_estimate": {},
-            "warnings": [],
-            "is_holiday": False,
-        }
-
-    def fake_generate_month_state(_start_date_str):
-        api_views.gd.greedy_assign("2025-11-05", [])
+    def fake_generate_month_state(_start_date_str, leave_by_date=None):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(api_views.gd, "greedy_assign", original_greedy_assign)
     monkeypatch.setattr(api_views, "_generate_month_state", fake_generate_month_state)
 
     try:
         api_views._generate_month_state_with_leave_requests("2025-11-01", {"2025-11-05": ["Kim", "Kim"]})
-    except RuntimeError:
-        pass
-
-    assert api_views.gd.greedy_assign is original_greedy_assign
+        assert False, "expected RuntimeError"
+    except RuntimeError as exc:
+        assert str(exc) == "boom"
