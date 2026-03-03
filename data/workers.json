@@ -30,6 +30,7 @@
       "role": "employee",
       "skills": ["decor", "knife", "glaze"],
       "station_skills": ["GATEAU", "glaze_and_fruit","mise_en_place"],
+      "allowed_shifts": ["1", "2", "A"],
       "shift_prefs": ["1", "2", "A"],           
       "max_days_per_week": 5,
       "min_days_per_week": 3,
@@ -214,58 +215,10 @@
         "hard": [], 
         "soft": []},    
       "special_leave_days": []
-    },
-
-    {
-      "name": "Kabasawa",
-      "role": "employee",
-      "skills": ["prep"],
-      "station_skills": ["mise_en_place"],
-      "shift_prefs": ["C","D","3","4"],
-      "max_days_per_week": 2,
-      "min_days_per_week": 0,
-      "max_consecutive_days": 2,
-      "fixed_days_off": [],
-      "ad_hoc_unavailable": [],
-      "wish_off": {
-        "hard": [], 
-        "soft": []},    
-      "special_leave_days": []
-    },
-
-    {
-      "name": "Mizuno",
-      "role": "part-time",
-      "skills": ["prep"],
-      "station_skills": ["mise_en_place"],
-      "shift_prefs": ["C","D","3","4"],
-      "max_days_per_week": 2,
-      "min_days_per_week": 0,
-      "max_consecutive_days": 2,
-      "fixed_days_off": [],
-      "ad_hoc_unavailable": [],
-      "wish_off": {
-        "hard": [], 
-        "soft": []},    
-      "special_leave_days": []
-    },
- 
-   {
-      "name": "Kunitsu",
-      "role": "part-time",
-      "skills": ["prep"],
-      "station_skills": ["mise_en_place"],
-      "shift_prefs": ["D"],
-      "max_days_per_week": 2,
-      "min_days_per_week": 0,
-      "max_consecutive_days": 2,
-      "fixed_days_off": ["Mon", "Tue", "Wed", "Thu", "Fri"],
-      "ad_hoc_unavailable": [],
-      "wish_off": {
-        "hard": [], 
-        "soft": []},    
-      "special_leave_days": []
     }
+
+    
+    
  
   ]
 }
