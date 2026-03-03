@@ -558,7 +558,7 @@ def _build_weekly_rest_warnings_from_people_grid(people_grid: dict) -> list[dict
             for cell_idx in indices:
                 if cell_idx < len(cells):
                     code = str((cells[cell_idx] or {}).get("code", "") or "").strip()
-                    if code:
+                    if code and code != "OFF":
                         worked += 1
 
             days_off = 7 - worked
@@ -718,11 +718,15 @@ def api_monthly_export_csv(request):
         return JsonResponse({"detail": date_err}, json_dumps_params={"ensure_ascii": False}, status=400)
     validated_year_month = datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m")
 
-    month_state = _generate_month_state(start_date)
+    leave_requests, leave_by_date, leave_err = _validate_leave_requests(payload.get("leave_requests"))
+    if leave_err:
+        return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    month_state = _generate_month_state_with_leave_requests(start_date, leave_by_date)
     month_state["language"] = payload.get("language") or "ja"
 
     try:
-        preview = plan_to_people_grid(month_state, {})
+        preview = plan_to_people_grid(month_state, leave_requests)
     except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
         return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
 

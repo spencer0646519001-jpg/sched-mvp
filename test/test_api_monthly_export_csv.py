@@ -40,3 +40,52 @@ def test_monthly_export_csv_success():
     header = rows[0]
     assert header[0:2] == ["name", "role"]
     assert any(col.startswith("2025-11-") for col in header[2:])
+
+
+def test_monthly_export_csv_applies_leave_requests(monkeypatch):
+    _django_setup()
+
+    import core.api_views as api_views
+
+    date_str = "2025-11-05"
+    fake_state = {
+        "month_start": date_str,
+        "month_end": date_str,
+        "plan": {
+            date_str: {
+                "assignments": {},
+                "warnings": [],
+                "chefs_present": [],
+            }
+        },
+        "summary": {},
+        "overtime": {},
+    }
+
+    monkeypatch.setattr(
+        api_views,
+        "_generate_month_state_with_leave_requests",
+        lambda start_date_str, leave_by_date: fake_state,
+    )
+
+    payload = {
+        "year_month": "2025-11",
+        "language": "ja",
+        "leave_requests": {"Spencer": [date_str]},
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/export.csv",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    rows = list(csv.reader(io.StringIO(response.content.decode("utf-8"))))
+    header = rows[0]
+    date_idx = header.index(date_str)
+
+    spencer_row = next(r for r in rows[1:] if r and r[0] == "Spencer")
+    assert spencer_row[date_idx] == "OFF"

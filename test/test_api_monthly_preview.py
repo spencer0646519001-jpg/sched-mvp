@@ -146,3 +146,73 @@ def test_monthly_preview_weekly_rest_warnings_for_full_week(monkeypatch):
         and w.get("required") == 2
         for w in data["weekly_rest_warnings"]
     )
+
+
+def test_monthly_preview_weekly_rest_leave_days_count_as_off(monkeypatch):
+    _django_setup()
+
+    import core.api_views as api_views
+
+    week_dates = [
+        "2026-01-26",
+        "2026-01-27",
+        "2026-01-28",
+        "2026-01-29",
+        "2026-01-30",
+        "2026-01-31",
+        "2026-02-01",
+    ]
+
+    # Spencer works 5 days, and has leave on the remaining 2 days.
+    plan = {}
+    for date_str in week_dates[:5]:
+        plan[date_str] = {
+            "assignments": {
+                "gateau": [{"name": "Spencer", "shift": "A"}],
+            },
+            "warnings": [],
+            "chefs_present": [],
+        }
+    for date_str in week_dates[5:]:
+        plan[date_str] = {
+            "assignments": {},
+            "warnings": [],
+            "chefs_present": [],
+        }
+
+    fake_state = {
+        "month_start": week_dates[0],
+        "month_end": week_dates[-1],
+        "plan": plan,
+        "summary": {},
+        "overtime": {},
+    }
+
+    monkeypatch.setattr(
+        api_views,
+        "_generate_month_state_with_leave_requests",
+        lambda start_date_str, leave_by_date: fake_state,
+    )
+
+    payload = {
+        "year_month": "2026-01",
+        "leave_requests": {"Spencer": [week_dates[5], week_dates[6]]},
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/preview",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    data = json.loads(response.content.decode("utf-8"))
+    assert not any(
+        w.get("type") == "weekly_rest"
+        and w.get("person") == "Spencer"
+        and w.get("week") == "2026-W05"
+        for w in data["weekly_rest_warnings"]
+    )
+
