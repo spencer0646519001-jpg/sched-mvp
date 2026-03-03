@@ -1,197 +1,392 @@
+{% load static %}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Monthly Schedule UI</title>
-  <style>
-    :root {
-      --bg: #f6f7fb;
-      --card: #ffffff;
-      --line: #dde2ee;
-      --text: #1c2333;
-      --muted: #5b647a;
-      --error: #b00020;
-      --accent: #0b5bd3;
-    }
-    body {
-      margin: 0;
-      padding: 20px;
-      background: linear-gradient(180deg, #f4f7ff 0%, #f6f7fb 100%);
-      color: var(--text);
-      font-family: "Segoe UI", "Noto Sans", sans-serif;
-    }
-    .card {
-      max-width: 1200px;
-      margin: 0 auto;
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 16px;
-    }
-    .controls {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    .full { grid-column: 1 / -1; }
-    label {
-      display: block;
-      font-weight: 600;
-      margin-bottom: 6px;
-    }
-    input, textarea {
-      width: 100%;
-      box-sizing: border-box;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 10px;
-      font: inherit;
-    }
-    .actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 4px;
-    }
-    button {
-      border: 0;
-      border-radius: 8px;
-      padding: 10px 14px;
-      color: #fff;
-      background: var(--accent);
-      cursor: pointer;
-    }
-    button.secondary {
-      background: #34405e;
-    }
-    button[disabled], textarea[disabled] {
-      opacity: 0.65;
-      cursor: not-allowed;
-    }
-    .hint {
-      color: var(--muted);
-      font-size: 13px;
-      margin-top: 6px;
-    }
-    .error {
-      color: var(--error);
-      font-weight: 600;
-      margin-top: 10px;
-    }
-    .table-wrap {
-      margin-top: 14px;
-      overflow-x: auto;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-    }
-    table {
-      border-collapse: collapse;
-      min-width: 900px;
-      width: 100%;
-      background: #fff;
-    }
-    th, td {
-      border-bottom: 1px solid var(--line);
-      border-right: 1px solid var(--line);
-      padding: 8px;
-      white-space: nowrap;
-      text-align: center;
-      font-size: 13px;
-    }
-    th:first-child, td:first-child {
-      position: sticky;
-      left: 0;
-      background: #f8f9fc;
-      text-align: left;
-      font-weight: 600;
-    }
-    .section-title {
-      margin-top: 20px;
-      margin-bottom: 8px;
-    }
-    #diff_preview {
-      margin-top: 8px;
-      border: 1px dashed var(--line);
-      border-radius: 8px;
-      padding: 10px;
-      color: var(--muted);
-      background: #fafbfe;
-    }
-    @media (max-width: 760px) {
-      .controls {
-        grid-template-columns: 1fr;
-      }
-      .actions {
-        flex-direction: column;
-      }
-      button {
-        width: 100%;
-      }
-    }
-  </style>
+  <title>Monthly Scheduling Workspace</title>
+  <link rel="stylesheet" href="{% static 'ui/monthly.css' %}" />
 </head>
 <body>
-  <div class="card">
-    <h1>Monthly Schedule Preview</h1>
-    <form method="post">
+  <main class="page-shell">
+    <header class="hero">
+      <h1>Monthly Scheduling Workspace</h1>
+      <p>Preview and export use the same payload: <code>{year_month, language, leave_requests}</code>.</p>
+    </header>
+
+    <form method="post" id="monthly-form" class="grid-layout">
       {% csrf_token %}
-      <div class="controls">
-        <div>
-          <label for="year_month">year_month (YYYY-MM)</label>
-          <input id="year_month" name="year_month" value="{{ year_month }}" required />
+
+      <section class="ui-card controls-card">
+        <h2>Controls</h2>
+        <div class="field-grid">
+          <div class="field">
+            <label for="year_month">Year Month</label>
+            <input id="year_month" name="year_month" type="month" value="{{ year_month }}" required />
+          </div>
+          <div class="field">
+            <label>Language</label>
+            <div class="lang-toggle" role="group" aria-label="language">
+              <button type="button" class="lang-btn" data-lang="ja">ja</button>
+              <button type="button" class="lang-btn" data-lang="zh">zh</button>
+              <button type="button" class="lang-btn" data-lang="en">en</button>
+            </div>
+            <input id="language" name="language" type="hidden" value="{{ language|default:'ja' }}" />
+          </div>
         </div>
-        <div>
-          <label for="language">language</label>
-          <input id="language" name="language" value="{{ language|default:'ja' }}" />
+      </section>
+
+      <section class="ui-card leave-card">
+        <h2>Leave Requests</h2>
+        <p class="subtle">Select person + date, then add. Each date becomes OFF in preview/export.</p>
+
+        <div class="field-grid leave-controls">
+          <div class="field">
+            <label for="leave_person">Person</label>
+            <select id="leave_person">
+              {% for name in worker_names %}
+                <option value="{{ name }}">{{ name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="leave_date">Date</label>
+            <input id="leave_date" type="date" />
+          </div>
+          <div class="field action-field">
+            <label>&nbsp;</label>
+            <button type="button" id="add-leave" class="btn btn-primary">Add Leave</button>
+          </div>
         </div>
-        <div class="full">
-          <label for="leave_requests">leave_requests (JSON dict[str, list[str]])</label>
-          <textarea id="leave_requests" name="leave_requests" rows="5">{{ leave_requests_raw }}</textarea>
-          <div class="hint">Example: {"Spencer": ["2025-11-05"]}</div>
+
+        <div id="leave-chips" class="chips-wrap"></div>
+        <textarea id="leave_requests" name="leave_requests" class="json-input">{{ leave_requests_raw }}</textarea>
+      </section>
+
+      <section class="ui-card action-card">
+        <h2>Actions</h2>
+        <div class="actions">
+          <button type="submit" name="action" value="preview" class="btn btn-primary">Preview</button>
+          <button type="submit" name="action" value="download" class="btn btn-secondary">Download CSV</button>
         </div>
-      </div>
-      <div class="actions">
-        <button type="submit" name="action" value="preview">Preview</button>
-        <button type="submit" name="action" value="download" class="secondary">Download CSV</button>
-      </div>
+      </section>
     </form>
 
     {% if error_message %}
-      <div class="error">{{ error_message }}</div>
+      <section class="ui-card alert-card error-card">
+        <strong>Request Error</strong>
+        <p>{{ error_message }}</p>
+      </section>
     {% endif %}
 
-    <h2 class="section-title">Refine Schedule (Coming Soon)</h2>
-    <label for="refine_text">refine_text</label>
-    <textarea id="refine_text" rows="3" disabled placeholder="Coming soon"></textarea>
-    <label for="refine_voice" style="margin-top:8px;">refine_voice</label>
-    <button id="refine_voice" type="button" disabled>Voice Input (Coming Soon)</button>
-    <div id="diff_preview">diff_preview placeholder</div>
+    <section class="ui-card warnings-card">
+      <h2>Weekly Rest Warnings</h2>
+      {% if preview_data and preview_data.weekly_rest_warnings %}
+        <ul class="warning-list">
+          {% for warning in preview_data.weekly_rest_warnings %}
+            <li>
+              <span class="who">{{ warning.person }}</span>
+              <span class="week">{{ warning.week }}</span>
+              <span class="meta">{{ warning.days_off }} OFF / required {{ warning.required }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% elif preview_data %}
+        <div class="ok-pill">OK: weekly rest checks passed.</div>
+      {% else %}
+        <p class="subtle">Run Preview to evaluate weekly rest constraints.</p>
+      {% endif %}
+    </section>
+
+    <section class="ui-card explain-card">
+      <h2>Explain / Decision Trace</h2>
+      {% if preview_data and preview_data.weekly_rest_warnings %}
+        <p class="subtle">
+          Summary: {{ preview_data.weekly_rest_warnings|length }} warning(s). People with &lt;2 OFF days in a full ISO week are highlighted.
+        </p>
+      {% elif preview_data %}
+        <p class="subtle">Summary: no weekly rest warnings for full ISO weeks in this preview.</p>
+      {% else %}
+        <p class="subtle">Summary will appear after preview.</p>
+      {% endif %}
+
+      <div class="field-grid explain-controls">
+        <div class="field">
+          <label for="explain_date">Explain Date</label>
+          <input id="explain_date" type="date" />
+        </div>
+        <div class="field action-field">
+          <label>&nbsp;</label>
+          <button type="button" id="generate-explain" class="btn btn-soft">Generate Explanation</button>
+        </div>
+      </div>
+
+      <p id="explain-status" class="subtle">Optional integration endpoint: <code>/api/tenants/demo_kitchen/daily-runs-graph/</code></p>
+      <div id="explain-output" class="explain-output">
+        <p class="subtle">Explain currently unavailable until generated.</p>
+      </div>
+    </section>
 
     {% if preview_data and preview_data.people_grid %}
-      <h2 class="section-title">People Grid</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              {% for date in preview_data.people_grid.dates %}
-                <th>{{ date }}</th>
-              {% endfor %}
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in preview_data.people_grid.rows %}
+      <section class="ui-card preview-card">
+        <h2>People Grid</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
               <tr>
-                <td>{{ row.name }} ({{ row.role }})</td>
-                {% for cell in row.cells %}
-                  <td title="{{ cell.note }}">{{ cell.code }}</td>
+                <th>Name</th>
+                {% for date in preview_data.people_grid.dates %}
+                  <th>{{ date }}</th>
                 {% endfor %}
               </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {% for row in preview_data.people_grid.rows %}
+                <tr>
+                  <td>{{ row.name }} ({{ row.role }})</td>
+                  {% for cell in row.cells %}
+                    <td title="{{ cell.note }}" class="{% if cell.code == 'OFF' %}off-cell{% endif %}">{{ cell.code }}</td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
     {% endif %}
-  </div>
+  </main>
+
+  <script>
+    (function () {
+      const form = document.getElementById("monthly-form");
+      const leaveField = document.getElementById("leave_requests");
+      const leavePerson = document.getElementById("leave_person");
+      const leaveDate = document.getElementById("leave_date");
+      const addLeaveBtn = document.getElementById("add-leave");
+      const chipsWrap = document.getElementById("leave-chips");
+      const languageInput = document.getElementById("language");
+      const langButtons = Array.from(document.querySelectorAll(".lang-btn"));
+      const explainDateInput = document.getElementById("explain_date");
+      const explainBtn = document.getElementById("generate-explain");
+      const explainStatus = document.getElementById("explain-status");
+      const explainOutput = document.getElementById("explain-output");
+      const yearMonthInput = document.getElementById("year_month");
+
+      let leaveRequests = {};
+
+      function safeParseLeave() {
+        try {
+          const parsed = JSON.parse(leaveField.value || "{}");
+          if (parsed && typeof parsed === "object") {
+            leaveRequests = parsed;
+          }
+        } catch (error) {
+          leaveRequests = {};
+        }
+      }
+
+      function normalizeLeave() {
+        const clean = {};
+        Object.keys(leaveRequests).forEach(function (person) {
+          const dates = Array.isArray(leaveRequests[person]) ? leaveRequests[person] : [];
+          const valid = Array.from(new Set(dates.filter(function (d) {
+            return typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d);
+          }))).sort();
+          if (valid.length) {
+            clean[person] = valid;
+          }
+        });
+        leaveRequests = clean;
+      }
+
+      function syncLeaveField() {
+        normalizeLeave();
+        leaveField.value = JSON.stringify(leaveRequests);
+      }
+
+      function renderLeaveChips() {
+        chipsWrap.innerHTML = "";
+        const people = Object.keys(leaveRequests).sort();
+        if (!people.length) {
+          chipsWrap.innerHTML = '<p class="subtle">No leave dates selected yet.</p>';
+          return;
+        }
+
+        people.forEach(function (person) {
+          const row = document.createElement("div");
+          row.className = "chip-row";
+
+          const label = document.createElement("span");
+          label.className = "chip-person";
+          label.textContent = person;
+          row.appendChild(label);
+
+          leaveRequests[person].forEach(function (dateStr) {
+            const chip = document.createElement("span");
+            chip.className = "chip";
+            chip.innerHTML = '<span>' + dateStr + '</span>';
+
+            const removeBtn = document.createElement("button");
+            removeBtn.type = "button";
+            removeBtn.className = "chip-remove";
+            removeBtn.textContent = "x";
+            removeBtn.addEventListener("click", function () {
+              leaveRequests[person] = (leaveRequests[person] || []).filter(function (d) {
+                return d !== dateStr;
+              });
+              if (!leaveRequests[person].length) {
+                delete leaveRequests[person];
+              }
+              syncLeaveField();
+              renderLeaveChips();
+            });
+
+            chip.appendChild(removeBtn);
+            row.appendChild(chip);
+          });
+
+          chipsWrap.appendChild(row);
+        });
+      }
+
+      function setLanguageActive(lang) {
+        langButtons.forEach(function (btn) {
+          btn.classList.toggle("is-active", btn.dataset.lang === lang);
+        });
+      }
+
+      function defaultExplainDate() {
+        const ym = (yearMonthInput.value || "").trim();
+        if (/^\d{4}-\d{2}$/.test(ym)) {
+          return ym + "-01";
+        }
+        return "";
+      }
+
+      function absentForDate(targetDate) {
+        const absent = [];
+        Object.keys(leaveRequests).forEach(function (person) {
+          if ((leaveRequests[person] || []).includes(targetDate)) {
+            absent.push(person);
+          }
+        });
+        return absent;
+      }
+
+      function renderExplainPayload(payload) {
+        const data = payload.data || {};
+        const trace = data.decision_trace || payload.decision_trace || [];
+        const outExplanations = (((data.out || {}).explanations) || payload.explanations || {});
+        const wrapper = document.createElement("div");
+
+        if (Array.isArray(trace) && trace.length) {
+          trace.forEach(function (item) {
+            const details = document.createElement("details");
+            details.className = "trace-item";
+            const summary = document.createElement("summary");
+            const station = item.station || "station";
+            const picked = Array.isArray(item.picked) ? item.picked.join(", ") : "";
+            summary.textContent = station + (picked ? " - " + picked : "");
+            details.appendChild(summary);
+
+            const pre = document.createElement("pre");
+            pre.textContent = JSON.stringify(item, null, 2);
+            details.appendChild(pre);
+            wrapper.appendChild(details);
+          });
+          return wrapper;
+        }
+
+        const stations = Object.keys(outExplanations);
+        if (stations.length) {
+          stations.forEach(function (station) {
+            const details = document.createElement("details");
+            details.className = "trace-item";
+            const summary = document.createElement("summary");
+            summary.textContent = station;
+            details.appendChild(summary);
+
+            const note = document.createElement("pre");
+            note.textContent = String(outExplanations[station] || "");
+            details.appendChild(note);
+            wrapper.appendChild(details);
+          });
+          return wrapper;
+        }
+
+        const unavailable = document.createElement("p");
+        unavailable.className = "subtle";
+        unavailable.textContent = "Explain currently unavailable.";
+        wrapper.appendChild(unavailable);
+        return wrapper;
+      }
+
+      langButtons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          languageInput.value = btn.dataset.lang;
+          setLanguageActive(languageInput.value);
+        });
+      });
+
+      addLeaveBtn.addEventListener("click", function () {
+        const person = (leavePerson.value || "").trim();
+        const day = (leaveDate.value || "").trim();
+        if (!person || !day) {
+          return;
+        }
+        if (!leaveRequests[person]) {
+          leaveRequests[person] = [];
+        }
+        if (!leaveRequests[person].includes(day)) {
+          leaveRequests[person].push(day);
+        }
+        syncLeaveField();
+        renderLeaveChips();
+      });
+
+      explainBtn.addEventListener("click", async function () {
+        const targetDate = explainDateInput.value || defaultExplainDate();
+        if (!targetDate) {
+          explainStatus.textContent = "Explain currently unavailable: choose a valid date.";
+          return;
+        }
+
+        const body = {
+          date: targetDate,
+          absent: absentForDate(targetDate),
+        };
+        explainStatus.textContent = "Generating explanation...";
+        explainOutput.innerHTML = "";
+
+        try {
+          const response = await fetch("/api/tenants/demo_kitchen/daily-runs-graph/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const payload = await response.json();
+          if (!response.ok || payload.ok === false) {
+            throw new Error((payload && payload.detail) || "endpoint_error");
+          }
+          explainStatus.textContent = "Explanation generated for " + targetDate + ".";
+          explainOutput.appendChild(renderExplainPayload(payload));
+        } catch (error) {
+          explainStatus.textContent = "Explain currently unavailable.";
+          explainOutput.innerHTML = '<p class="subtle">Explain currently unavailable.</p>';
+        }
+      });
+
+      form.addEventListener("submit", syncLeaveField);
+
+      safeParseLeave();
+      syncLeaveField();
+      renderLeaveChips();
+      setLanguageActive(languageInput.value || "ja");
+
+      if (!explainDateInput.value) {
+        explainDateInput.value = defaultExplainDate();
+      }
+    })();
+  </script>
 </body>
 </html>

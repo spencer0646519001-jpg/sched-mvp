@@ -19,8 +19,9 @@ def test_ui_monthly_get_renders():
 
     assert response.status_code == 200
     body = response.content.decode("utf-8")
-    assert "Monthly Schedule Preview" in body
-    assert "Refine Schedule (Coming Soon)" in body
+    assert "Monthly Scheduling Workspace" in body
+    assert "Leave Requests" in body
+    assert "Explain / Decision Trace" in body
 
 
 def test_ui_monthly_preview_post_renders_grid():
@@ -41,6 +42,7 @@ def test_ui_monthly_preview_post_renders_grid():
     body = response.content.decode("utf-8")
     assert "People Grid" in body
     assert "2025-11-05" in body
+    assert "Weekly Rest Warnings" in body
 
 
 def test_ui_monthly_download_post_returns_csv():

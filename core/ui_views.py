@@ -6,6 +6,7 @@ from django.shortcuts import render
 from django.test.client import RequestFactory
 from django.views.decorators.http import require_http_methods
 
+from app import generate_day as gd
 from core.api_views import api_monthly_export_csv, api_monthly_preview_mirror
 
 
@@ -25,6 +26,7 @@ def ui_monthly(request):
         "year_month": year_month,
         "language": language or "ja",
         "leave_requests_raw": leave_requests_raw,
+        "worker_names": _load_worker_names(),
         "preview_data": None,
         "error_message": "",
     }
@@ -35,6 +37,7 @@ def ui_monthly(request):
         except json.JSONDecodeError:
             context["error_message"] = "Invalid JSON in leave_requests. Expected dict[str, list[str]]."
             return render(request, "ui/monthly.html", context)
+        context["leave_requests_raw"] = json.dumps(leave_requests, ensure_ascii=False)
 
         payload = {
             "year_month": year_month,
@@ -76,3 +79,11 @@ def ui_monthly(request):
                 context["error_message"] = f"CSV export failed (HTTP {api_response.status_code})."
 
     return render(request, "ui/monthly.html", context)
+
+
+def _load_worker_names():
+    try:
+        workers = gd.load_json("workers.json").get("people", [])
+    except Exception:
+        workers = []
+    return [person.get("name") for person in workers if isinstance(person, dict) and person.get("name")]
