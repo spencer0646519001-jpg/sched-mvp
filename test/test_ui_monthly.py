@@ -80,6 +80,18 @@ def test_ui_monthly_explain_block_placeholder_renders_when_unavailable():
     assert re.search(r'<div[^>]*id="explain-output"[^>]*>[\s\S]*生成されるまで Explain は利用できません。[\s\S]*</div>', body)
 
 
+
+def test_ui_monthly_explain_js_has_error_fallback_message():
+    _django_setup()
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.get("/ui/monthly")
+
+    assert response.status_code == 200
+    body = response.content.decode("utf-8")
+    assert 'const fallback = getT(currentLanguage, "explain_unavailable");' in body
+    assert "explainOutput.innerHTML = '<p class=\"subtle\">' + fallback + detail + \"</p>\";" in body
+
 def test_ui_monthly_download_post_returns_csv():
     _django_setup()
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):

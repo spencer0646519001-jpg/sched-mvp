@@ -9,7 +9,7 @@ from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from dateutil import parser as dtparser
-from core.presenters.daily_run_presenter import (present_create_daily_run_success,present_create_daily_run_graph_success,)
+from core.presenters.daily_run_presenter import present_create_daily_run_success
 
 from core.models import ScheduleRun
 from app.month_service import run_daily_schedule
@@ -159,16 +159,12 @@ def create_daily_run_graph(request, tenant_name: str):
       "absent": ["Kim", "Spencer"]
     }
 
-    和 create_daily_run 一樣，但：
-    - 用 LangGraph 包 greedy
-    - 回傳 explanations
+    Same payload contract as create_daily_run, but backed by LangGraph.
     """
-    # 1) parse JSON
     payload, payload_err = _parse_request_payload(request)
     if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
 
-    # 2) validate
     date_str, absent, payload_err = _validate_daily_run_payload(
         payload,
         include_absent_type=False,
@@ -176,7 +172,6 @@ def create_daily_run_graph(request, tenant_name: str):
     if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
 
-    # 3) run LangGraph (greedy inside)
     try:
         from app.langgraph_flow import run_daily_schedule_graph
     except ModuleNotFoundError as e:
@@ -185,40 +180,76 @@ def create_daily_run_graph(request, tenant_name: str):
                 {
                     "ok": False,
                     "detail": "langgraph not installed",
-                    "error": str(e),
-                    "hint": "Install optional dependency 'langgraph' to enable this endpoint.",
                 },
                 status=501,
                 json_dumps_params={"ensure_ascii": False},
             )
         raise
 
-    result = run_daily_schedule_graph(
-    tenant_name=tenant_name,
-    date_str=date_str,
-    absent=absent,
-)
+    try:
+        result = run_daily_schedule_graph(
+            tenant_name=tenant_name,
+            date_str=date_str,
+            absent=absent,
+        )
+    except Exception as exc:
+        return JsonResponse(
+            {"ok": False, "detail": str(exc)},
+            json_dumps_params={"ensure_ascii": False},
+            status=500,
+        )
 
-    # ✅ 新版：run_daily_schedule_graph 回傳 {"ok": True, "data": {...}, "compat": {...}}
     data = result.get("data") or {}
     compat = result.get("compat") or {}
 
     out = data.get("out") or compat.get("out_engine")
-    decision_trace = data.get("decision_trace") or compat.get("decision_trace") or []
+    trace = data.get("decision_trace") or compat.get("decision_trace") or []
     explanations = data.get("explanations") or compat.get("explanations") or {}
-    metrics = data.get("metrics") or {}
+    metrics = data.get("metrics") or compat.get("metrics") or {}
 
     if out is None:
-        raise KeyError("run_daily_schedule_graph returned no out/data.out (and no compat.out_engine)")
+        return JsonResponse(
+            {"ok": False, "detail": "missing graph output"},
+            json_dumps_params={"ensure_ascii": False},
+            status=500,
+        )
 
     out["explanations"] = explanations
-
-
     presented = present_run_out(date=date_str, out=out)
 
-    payload_ok = present_create_daily_run_graph_success(out=presented)
+    stations_count = len(explanations) if isinstance(explanations, dict) else 0
+    summary = f"Generated explanation for {stations_count} station(s)."
+    if isinstance(metrics, dict) and metrics.get("fallback_stations") is not None:
+        summary = summary + f" Fallback used on {metrics.get('fallback_stations')} station(s)."
 
-    return JsonResponse(payload_ok, json_dumps_params={"ensure_ascii": False}, status=201)
+    text_parts = []
+    if isinstance(explanations, dict):
+        for station, note in explanations.items():
+            text_parts.append(f"[{station}]")
+            text_parts.append(str(note or ""))
+    text = "\n".join(text_parts).strip()
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "date": date_str,
+            "summary": summary,
+            "trace": trace if isinstance(trace, list) else [],
+            "text": text,
+            "metrics": metrics if isinstance(metrics, dict) else {},
+            "explanations": explanations if isinstance(explanations, dict) else {},
+            # backward compatibility for existing clients
+            "data": {
+                "out": presented,
+                "decision_trace": trace if isinstance(trace, list) else [],
+                "explanations": explanations if isinstance(explanations, dict) else {},
+                "metrics": metrics if isinstance(metrics, dict) else {},
+            },
+            "meta": {"engine_version": "0.1"},
+        },
+        json_dumps_params={"ensure_ascii": False},
+        status=200,
+    )
 
 
 @csrf_exempt
