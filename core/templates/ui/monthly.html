@@ -4,28 +4,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Monthly Scheduling Workspace</title>
+  <title>{{ t.page_title }}</title>
   <link rel="stylesheet" href="{% static 'ui/monthly.css' %}" />
 </head>
 <body>
   <main class="page-shell">
     <header class="hero">
-      <h1>Monthly Scheduling Workspace</h1>
-      <p>Preview and export use the same payload: <code>{year_month, language, leave_requests}</code>.</p>
+      <h1 data-i18n="page_title">{{ t.page_title }}</h1>
+      <p><span data-i18n="hero_desc">{{ t.hero_desc }}</span> <code>{year_month, language, leave_requests}</code>.</p>
     </header>
 
     <form method="post" id="monthly-form" class="grid-layout">
       {% csrf_token %}
 
       <section class="ui-card controls-card">
-        <h2>Controls</h2>
+        <h2 data-i18n="controls">{{ t.controls }}</h2>
         <div class="field-grid">
           <div class="field">
-            <label for="year_month">Year Month</label>
+            <label for="year_month" data-i18n="year_month">{{ t.year_month }}</label>
             <input id="year_month" name="year_month" type="month" value="{{ year_month }}" required />
           </div>
           <div class="field">
-            <label>Language</label>
+            <label data-i18n="language">{{ t.language }}</label>
             <div class="lang-toggle" role="group" aria-label="language">
               <button type="button" class="lang-btn" data-lang="ja">ja</button>
               <button type="button" class="lang-btn" data-lang="zh">zh</button>
@@ -37,12 +37,12 @@
       </section>
 
       <section class="ui-card leave-card">
-        <h2>Leave Requests</h2>
-        <p class="subtle">Select person + date, then add. Each date becomes OFF in preview/export.</p>
+        <h2 data-i18n="leave_requests">{{ t.leave_requests }}</h2>
+        <p class="subtle" data-i18n="leave_help">{{ t.leave_help }}</p>
 
         <div class="field-grid leave-controls">
           <div class="field">
-            <label for="leave_person">Person</label>
+            <label for="leave_person" data-i18n="person">{{ t.person }}</label>
             <select id="leave_person">
               {% for name in worker_names %}
                 <option value="{{ name }}">{{ name }}</option>
@@ -50,12 +50,12 @@
             </select>
           </div>
           <div class="field">
-            <label for="leave_date">Date</label>
+            <label for="leave_date" data-i18n="date">{{ t.date }}</label>
             <input id="leave_date" type="date" />
           </div>
           <div class="field action-field">
             <label>&nbsp;</label>
-            <button type="button" id="add-leave" class="btn btn-primary">Add Leave</button>
+            <button type="button" id="add-leave" class="btn btn-primary" data-i18n="add_leave">{{ t.add_leave }}</button>
           </div>
         </div>
 
@@ -64,23 +64,23 @@
       </section>
 
       <section class="ui-card action-card">
-        <h2>Actions</h2>
+        <h2 data-i18n="actions">{{ t.actions }}</h2>
         <div class="actions">
-          <button type="submit" name="action" value="preview" class="btn btn-primary">Preview</button>
-          <button type="submit" name="action" value="download" class="btn btn-secondary">Download CSV</button>
+          <button type="submit" name="action" value="preview" class="btn btn-primary" data-i18n="preview">{{ t.preview }}</button>
+          <button type="submit" name="action" value="download" class="btn btn-secondary" data-i18n="download_csv">{{ t.download_csv }}</button>
         </div>
       </section>
     </form>
 
     {% if error_message %}
       <section class="ui-card alert-card error-card">
-        <strong>Request Error</strong>
+        <strong data-i18n="request_error">{{ t.request_error }}</strong>
         <p>{{ error_message }}</p>
       </section>
     {% endif %}
 
     <section class="ui-card warnings-card">
-      <h2>Weekly Rest Warnings</h2>
+      <h2 data-i18n="weekly_rest_warnings">{{ t.weekly_rest_warnings }}</h2>
       {% if preview_data and preview_data.weekly_rest_warnings %}
         <ul class="warning-list">
           {% for warning in preview_data.weekly_rest_warnings %}
@@ -92,49 +92,47 @@
           {% endfor %}
         </ul>
       {% elif preview_data %}
-        <div class="ok-pill">OK: weekly rest checks passed.</div>
+        <div class="ok-pill" data-i18n="weekly_ok">{{ t.weekly_ok }}</div>
       {% else %}
-        <p class="subtle">Run Preview to evaluate weekly rest constraints.</p>
+        <p class="subtle" data-i18n="run_preview_hint">{{ t.run_preview_hint }}</p>
       {% endif %}
     </section>
 
     <section class="ui-card explain-card">
-      <h2>Explain / Decision Trace</h2>
+      <h2 data-i18n="explain_trace">{{ t.explain_trace }}</h2>
       {% if preview_data and preview_data.weekly_rest_warnings %}
-        <p class="subtle">
-          Summary: {{ preview_data.weekly_rest_warnings|length }} warning(s). People with &lt;2 OFF days in a full ISO week are highlighted.
-        </p>
+        <p class="subtle">{{ t.summary_with_warnings_prefix }} {{ preview_data.weekly_rest_warnings|length }} {{ t.summary_with_warnings_suffix }}</p>
       {% elif preview_data %}
-        <p class="subtle">Summary: no weekly rest warnings for full ISO weeks in this preview.</p>
+        <p class="subtle">{{ t.summary_no_warnings }}</p>
       {% else %}
-        <p class="subtle">Summary will appear after preview.</p>
+        <p class="subtle">{{ t.summary_waiting_preview }}</p>
       {% endif %}
 
       <div class="field-grid explain-controls">
         <div class="field">
-          <label for="explain_date">Explain Date</label>
+          <label for="explain_date" data-i18n="explain_date">{{ t.explain_date }}</label>
           <input id="explain_date" type="date" />
         </div>
         <div class="field action-field">
           <label>&nbsp;</label>
-          <button type="button" id="generate-explain" class="btn btn-soft">Generate Explanation</button>
+          <button type="button" id="generate-explain" class="btn btn-soft" data-i18n="generate_explanation">{{ t.generate_explanation }}</button>
         </div>
       </div>
 
-      <p id="explain-status" class="subtle">Optional integration endpoint: <code>/api/tenants/demo_kitchen/daily-runs-graph/</code></p>
+      <p id="explain-status" class="subtle"><span data-i18n="explain_optional_endpoint">{{ t.explain_optional_endpoint }}</span>: <code>/api/tenants/demo_kitchen/daily-runs-graph/</code></p>
       <div id="explain-output" class="explain-output">
-        <p class="subtle">Explain currently unavailable until generated.</p>
+        <p class="subtle" data-i18n="explain_unavailable_until_generated">{{ t.explain_unavailable_until_generated }}</p>
       </div>
     </section>
 
     {% if preview_data and preview_data.people_grid %}
       <section class="ui-card preview-card">
-        <h2>People Grid</h2>
+        <h2 data-i18n="people_grid">{{ t.people_grid }}</h2>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Name</th>
+                <th data-i18n="name">{{ t.name }}</th>
                 {% for date in preview_data.people_grid.dates %}
                   <th>{{ date }}</th>
                 {% endfor %}
@@ -143,7 +141,7 @@
             <tbody>
               {% for row in preview_data.people_grid.rows %}
                 <tr>
-                  <td>{{ row.name }} ({{ row.role }})</td>
+                  <td>{{ row.name }} ({% if row.role == "chef" %}{{ t.role_chef }}{% elif row.role == "staff" %}{{ t.role_staff }}{% else %}{{ t.role_unknown }}{% endif %})</td>
                   {% for cell in row.cells %}
                     <td title="{{ cell.note }}" class="{% if cell.code == 'OFF' %}off-cell{% endif %}">{{ cell.code }}</td>
                   {% endfor %}
@@ -158,6 +156,7 @@
 
   <script>
     (function () {
+      const translations = {{ ui_translations_json|safe }};
       const form = document.getElementById("monthly-form");
       const leaveField = document.getElementById("leave_requests");
       const leavePerson = document.getElementById("leave_person");
@@ -173,6 +172,21 @@
       const yearMonthInput = document.getElementById("year_month");
 
       let leaveRequests = {};
+      let currentLanguage = languageInput.value || "ja";
+
+      function getT(lang, key) {
+        const selected = translations[lang] || translations.ja || {};
+        return selected[key] || (translations.ja || {})[key] || key;
+      }
+
+      function applyLanguageText(lang) {
+        currentLanguage = translations[lang] ? lang : "ja";
+        document.querySelectorAll("[data-i18n]").forEach(function (node) {
+          const key = node.dataset.i18n;
+          node.textContent = getT(currentLanguage, key);
+        });
+        document.title = getT(currentLanguage, "page_title");
+      }
 
       function safeParseLeave() {
         try {
@@ -208,7 +222,7 @@
         chipsWrap.innerHTML = "";
         const people = Object.keys(leaveRequests).sort();
         if (!people.length) {
-          chipsWrap.innerHTML = '<p class="subtle">No leave dates selected yet.</p>';
+          chipsWrap.innerHTML = '<p class="subtle">' + getT(currentLanguage, "no_leave_selected") + "</p>";
           return;
         }
 
@@ -316,7 +330,7 @@
 
         const unavailable = document.createElement("p");
         unavailable.className = "subtle";
-        unavailable.textContent = "Explain currently unavailable.";
+        unavailable.textContent = getT(currentLanguage, "explain_unavailable");
         wrapper.appendChild(unavailable);
         return wrapper;
       }
@@ -325,6 +339,8 @@
         btn.addEventListener("click", function () {
           languageInput.value = btn.dataset.lang;
           setLanguageActive(languageInput.value);
+          applyLanguageText(languageInput.value);
+          renderLeaveChips();
         });
       });
 
@@ -347,15 +363,17 @@
       explainBtn.addEventListener("click", async function () {
         const targetDate = explainDateInput.value || defaultExplainDate();
         if (!targetDate) {
-          explainStatus.textContent = "Explain currently unavailable: choose a valid date.";
+          explainStatus.textContent = getT(currentLanguage, "explain_choose_valid_date");
           return;
         }
 
         const body = {
           date: targetDate,
           absent: absentForDate(targetDate),
+          language: languageInput.value || currentLanguage,
+          year_month: (yearMonthInput.value || "").trim(),
         };
-        explainStatus.textContent = "Generating explanation...";
+        explainStatus.textContent = getT(currentLanguage, "generating_explanation");
         explainOutput.innerHTML = "";
 
         try {
@@ -368,11 +386,11 @@
           if (!response.ok || payload.ok === false) {
             throw new Error((payload && payload.detail) || "endpoint_error");
           }
-          explainStatus.textContent = "Explanation generated for " + targetDate + ".";
+          explainStatus.textContent = getT(currentLanguage, "explanation_generated_for") + targetDate + ".";
           explainOutput.appendChild(renderExplainPayload(payload));
         } catch (error) {
-          explainStatus.textContent = "Explain currently unavailable.";
-          explainOutput.innerHTML = '<p class="subtle">Explain currently unavailable.</p>';
+          explainStatus.textContent = getT(currentLanguage, "explain_unavailable");
+          explainOutput.innerHTML = '<p class="subtle">' + getT(currentLanguage, "explain_unavailable") + "</p>";
         }
       });
 
@@ -380,8 +398,9 @@
 
       safeParseLeave();
       syncLeaveField();
-      renderLeaveChips();
       setLanguageActive(languageInput.value || "ja");
+      applyLanguageText(languageInput.value || "ja");
+      renderLeaveChips();
 
       if (!explainDateInput.value) {
         explainDateInput.value = defaultExplainDate();

@@ -10,6 +10,142 @@ from app import generate_day as gd
 from core.api_views import api_monthly_export_csv, api_monthly_preview_mirror
 
 
+UI_TRANSLATIONS = {
+    "ja": {
+        "page_title": "月間シフト作成ワークスペース",
+        "hero_desc": "プレビューとCSV出力は同じペイロードを使います:",
+        "controls": "コントロール",
+        "year_month": "年月",
+        "language": "言語",
+        "leave_requests": "休暇申請",
+        "leave_help": "スタッフと日付を選択して追加。対象日はプレビュー/出力で OFF になります。",
+        "person": "スタッフ",
+        "date": "日付",
+        "add_leave": "休暇を追加",
+        "no_leave_selected": "まだ休暇日は選択されていません。",
+        "actions": "アクション",
+        "preview": "プレビュー",
+        "download_csv": "CSVをダウンロード",
+        "request_error": "リクエストエラー",
+        "weekly_rest_warnings": "週休チェック警告",
+        "weekly_ok": "OK: 週休チェックを満たしています。",
+        "run_preview_hint": "プレビューを実行して週休制約を確認してください。",
+        "explain_trace": "Explain / Decision Trace",
+        "summary_with_warnings_prefix": "概要:",
+        "summary_with_warnings_suffix": "件の警告。フルISO週でOFFが2日未満のスタッフが表示されます。",
+        "summary_no_warnings": "概要: このプレビューではフルISO週の週休警告はありません。",
+        "summary_waiting_preview": "概要はプレビュー後に表示されます。",
+        "explain_date": "Explain 日付",
+        "generate_explanation": "説明を生成",
+        "explain_optional_endpoint": "任意連携エンドポイント",
+        "explain_unavailable_until_generated": "生成されるまで Explain は利用できません。",
+        "people_grid": "スタッフグリッド",
+        "name": "名前",
+        "role_chef": "シェフ",
+        "role_staff": "スタッフ",
+        "role_unknown": "不明",
+        "invalid_leave_json": "leave_requests のJSONが不正です。dict[str, list[str]] を指定してください。",
+        "preview_failed": "プレビューに失敗しました。",
+        "csv_export_failed": "CSV出力に失敗しました。",
+        "explain_choose_valid_date": "Explain は現在利用できません: 有効な日付を選択してください。",
+        "generating_explanation": "説明を生成中...",
+        "explanation_generated_for": "説明を生成しました: ",
+        "explain_unavailable": "Explain は現在利用できません。",
+    },
+    "en": {
+        "page_title": "Monthly Scheduling Workspace",
+        "hero_desc": "Preview and export use the same payload:",
+        "controls": "Controls",
+        "year_month": "Year Month",
+        "language": "Language",
+        "leave_requests": "Leave Requests",
+        "leave_help": "Select person + date, then add. Each date becomes OFF in preview/export.",
+        "person": "Person",
+        "date": "Date",
+        "add_leave": "Add Leave",
+        "no_leave_selected": "No leave dates selected yet.",
+        "actions": "Actions",
+        "preview": "Preview",
+        "download_csv": "Download CSV",
+        "request_error": "Request Error",
+        "weekly_rest_warnings": "Weekly Rest Warnings",
+        "weekly_ok": "OK: weekly rest checks passed.",
+        "run_preview_hint": "Run Preview to evaluate weekly rest constraints.",
+        "explain_trace": "Explain / Decision Trace",
+        "summary_with_warnings_prefix": "Summary:",
+        "summary_with_warnings_suffix": "warning(s). People with <2 OFF days in a full ISO week are highlighted.",
+        "summary_no_warnings": "Summary: no weekly rest warnings for full ISO weeks in this preview.",
+        "summary_waiting_preview": "Summary will appear after preview.",
+        "explain_date": "Explain Date",
+        "generate_explanation": "Generate Explanation",
+        "explain_optional_endpoint": "Optional integration endpoint",
+        "explain_unavailable_until_generated": "Explain currently unavailable until generated.",
+        "people_grid": "People Grid",
+        "name": "Name",
+        "role_chef": "chef",
+        "role_staff": "staff",
+        "role_unknown": "unknown",
+        "invalid_leave_json": "Invalid JSON in leave_requests. Expected dict[str, list[str]].",
+        "preview_failed": "Preview failed.",
+        "csv_export_failed": "CSV export failed.",
+        "explain_choose_valid_date": "Explain currently unavailable: choose a valid date.",
+        "generating_explanation": "Generating explanation...",
+        "explanation_generated_for": "Explanation generated for ",
+        "explain_unavailable": "Explain currently unavailable.",
+    },
+    "zh": {
+        "page_title": "月度排班工作台",
+        "hero_desc": "預覽與匯出使用同一個 payload：",
+        "controls": "控制項",
+        "year_month": "年月",
+        "language": "語言",
+        "leave_requests": "請假申請",
+        "leave_help": "選擇人員與日期後新增。該日期在預覽/匯出會標記為 OFF。",
+        "person": "人員",
+        "date": "日期",
+        "add_leave": "新增請假",
+        "no_leave_selected": "尚未選擇請假日期。",
+        "actions": "操作",
+        "preview": "預覽",
+        "download_csv": "下載 CSV",
+        "request_error": "請求錯誤",
+        "weekly_rest_warnings": "每週休息警示",
+        "weekly_ok": "OK：每週休息檢查通過。",
+        "run_preview_hint": "請先執行預覽以檢查每週休息限制。",
+        "explain_trace": "Explain / 決策軌跡",
+        "summary_with_warnings_prefix": "摘要：",
+        "summary_with_warnings_suffix": "筆警示。完整 ISO 週中 OFF 少於 2 天的人員會被標示。",
+        "summary_no_warnings": "摘要：本次預覽在完整 ISO 週沒有每週休息警示。",
+        "summary_waiting_preview": "摘要會在預覽後顯示。",
+        "explain_date": "Explain 日期",
+        "generate_explanation": "產生說明",
+        "explain_optional_endpoint": "可選整合端點",
+        "explain_unavailable_until_generated": "尚未產生前，Explain 暫時不可用。",
+        "people_grid": "人員排班表",
+        "name": "姓名",
+        "role_chef": "主廚",
+        "role_staff": "員工",
+        "role_unknown": "未知",
+        "invalid_leave_json": "leave_requests JSON 格式錯誤，預期為 dict[str, list[str]]。",
+        "preview_failed": "預覽失敗。",
+        "csv_export_failed": "CSV 匯出失敗。",
+        "explain_choose_valid_date": "Explain 暫時不可用：請選擇有效日期。",
+        "generating_explanation": "正在產生說明...",
+        "explanation_generated_for": "說明已產生：",
+        "explain_unavailable": "Explain 暫時不可用。",
+    },
+}
+
+
+def _translation_pack(language: str) -> dict:
+    lang = language if language in UI_TRANSLATIONS else "ja"
+    return {
+        "lang": lang,
+        "t": UI_TRANSLATIONS[lang],
+        "translations_json": json.dumps(UI_TRANSLATIONS, ensure_ascii=False),
+    }
+
+
 @require_http_methods(["GET"])
 def ui_home(request):
     return render(request, "ui/home.html")
@@ -22,26 +158,29 @@ def ui_monthly(request):
     leave_requests_raw = request.POST.get("leave_requests", "{}")
     action = request.POST.get("action", "")
 
+    tr = _translation_pack(language)
     context = {
         "year_month": year_month,
-        "language": language or "ja",
+        "language": tr["lang"],
         "leave_requests_raw": leave_requests_raw,
         "worker_names": _load_worker_names(),
         "preview_data": None,
         "error_message": "",
+        "t": tr["t"],
+        "ui_translations_json": tr["translations_json"],
     }
 
     if request.method == "POST":
         try:
             leave_requests = json.loads(leave_requests_raw or "{}")
         except json.JSONDecodeError:
-            context["error_message"] = "Invalid JSON in leave_requests. Expected dict[str, list[str]]."
+            context["error_message"] = context["t"]["invalid_leave_json"]
             return render(request, "ui/monthly.html", context)
         context["leave_requests_raw"] = json.dumps(leave_requests, ensure_ascii=False)
 
         payload = {
             "year_month": year_month,
-            "language": language or "ja",
+            "language": context["language"],
             "leave_requests": leave_requests,
         }
 
@@ -59,7 +198,7 @@ def ui_monthly(request):
             else:
                 try:
                     err = json.loads(api_response.content.decode("utf-8"))
-                    context["error_message"] = err.get("detail") or "Preview failed."
+                    context["error_message"] = err.get("detail") or context["t"]["preview_failed"]
                 except json.JSONDecodeError:
                     context["error_message"] = f"Preview failed (HTTP {api_response.status_code})."
 
@@ -74,7 +213,7 @@ def ui_monthly(request):
                 return api_response
             try:
                 err = json.loads(api_response.content.decode("utf-8"))
-                context["error_message"] = err.get("detail") or "CSV export failed."
+                context["error_message"] = err.get("detail") or context["t"]["csv_export_failed"]
             except json.JSONDecodeError:
                 context["error_message"] = f"CSV export failed (HTTP {api_response.status_code})."
 
