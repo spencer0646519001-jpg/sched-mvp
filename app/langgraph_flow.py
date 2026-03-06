@@ -5,11 +5,9 @@ from typing import Any, Dict, List, Optional, TypedDict
 
 from langgraph.graph import StateGraph, END
 
-from django.db.models import QuerySet
-from core.models import Tenant, Station, EmployeeStationSkill
-
 # 你的引擎（不改它）
-from app.generate_day import greedy_assign
+from app.generate_day import EngineInputs, greedy_assign_with_inputs
+from app.infra.engine_inputs import build_inputs_from_json
 
 
 class GraphState(TypedDict, total=False):
@@ -17,8 +15,10 @@ class GraphState(TypedDict, total=False):
     tenant_name: str
     date_str: str
     absent: List[str]
+    language: str
 
     # context
+    engine_inputs: EngineInputs
     stations: List[str]                 # db-ordered station codes
     station_need: Dict[str, int]        # normalized keys
     skills_by_station: Dict[str, List[str]]
@@ -39,38 +39,34 @@ def _load_station_need_normalized(rules: Dict[str, Any]) -> Dict[str, int]:
 
 
 def node_load_context(state: GraphState) -> GraphState:
-    tenant_name = state["tenant_name"]
+    inputs = build_inputs_from_json()
+    station_need = _load_station_need_normalized(inputs.rules)
 
-    # rules/calendar 仍然由 greedy_assign 內部讀 json
-    # 這裡只需要 DB 的 station order + station skills（用來解釋）
-    tenant = Tenant.objects.get(name=tenant_name)
-
-    db_station_codes = list(
-        Station.objects
-        .filter(tenant=tenant, is_active=True)
-        .order_by("sort_order", "code")
-        .values_list("code", flat=True)
-    )
+    base_order = [str(code).strip().lower() for code in (inputs.station_order or [])]
+    stations = [code for code in base_order if code in station_need]
+    missing_in_order = [code for code in station_need.keys() if code not in set(stations)]
+    stations.extend(missing_in_order)
 
     # skills_by_station: station_code -> [employee_name...]
-    skills_by_station: Dict[str, List[str]] = {}
-    for code in db_station_codes:
-        st = Station.objects.get(tenant=tenant, code=code)
+    skills_by_station: Dict[str, List[str]] = {code: [] for code in stations}
+    for person in inputs.people:
+        if not isinstance(person, dict):
+            continue
+        name = str(person.get("name") or "").strip()
+        if not name:
+            continue
+        for code in person.get("station_skills") or []:
+            station_code = str(code).strip().lower()
+            if station_code in skills_by_station:
+                skills_by_station[station_code].append(name)
 
-        qs: QuerySet[EmployeeStationSkill] = (
-            EmployeeStationSkill.objects
-            .filter(
-                tenant=tenant,
-                station=st,
-                employee__is_active=True,
-                employee__is_assignable=True,
-            )
-            .order_by("-level", "employee__name")
-        )
-        skills_by_station[code] = [s.employee.name for s in qs]
+    for code, names in skills_by_station.items():
+        skills_by_station[code] = sorted(set(names), key=lambda n: n.lower())
 
     return {
-        "stations": db_station_codes,
+        "engine_inputs": inputs,
+        "station_need": station_need,
+        "stations": stations,
         "skills_by_station": skills_by_station,
     }
 
@@ -78,8 +74,9 @@ def node_load_context(state: GraphState) -> GraphState:
 def node_run_greedy(state: GraphState) -> GraphState:
     date_str = state["date_str"]
     absent = state.get("absent") or []
+    inputs = state.get("engine_inputs") or build_inputs_from_json()
 
-    out = greedy_assign(date_str, absent=absent)
+    out = greedy_assign_with_inputs(date_str, absent=absent, inputs=inputs)
     return {"greedy_result": out}
 
 def _build_station_trace_item(
@@ -172,8 +169,66 @@ def _apply_trace_item_metrics(
     return updated
 
 
+def _normalize_language(language: Optional[str]) -> str:
+    lang = str(language or "").strip().lower()
+    if lang in {"ja", "en", "zh"}:
+        return lang
+    return "en"
+
+
+def _i18n_text(language: str) -> Dict[str, str]:
+    if language == "ja":
+        return {
+            "assigned": "割当:",
+            "skilled_pool": "この站位のスキル候補（上位）:",
+            "no_skilled_pool": "この站位のスキル候補が見つかりません。",
+            "picked_has_skill": "割当のうちスキル一致:",
+            "picked_no_skill": "割当者がスキル候補に見つかりません。",
+            "fallback_1": "fallback_no_skill が発生: スキル候補不足のため代替配置。",
+            "fallback_2": "主因: 先行站位で技能者が先に消費された可能性。",
+            "skilled_total": "スキル候補人数:",
+            "missing": "スキル候補で未選出（上位）:",
+            "missing_absent": "そのうち欠勤:",
+            "missing_not_absent": "欠勤以外で未選出:",
+            "notes": "備考:",
+            "empty_station": "この站位には割当がありません。",
+        }
+    if language == "zh":
+        return {
+            "assigned": "分配到:",
+            "skilled_pool": "此站位技能名單（前列）:",
+            "no_skilled_pool": "此站位找不到技能名單。",
+            "picked_has_skill": "分配中具此站技能:",
+            "picked_no_skill": "分配到的人不在技能名單中。",
+            "fallback_1": "發生 fallback_no_skill：技能候選不足，使用替補分配。",
+            "fallback_2": "常見原因：前序站位先用掉技能者。",
+            "skilled_total": "技能候選總數:",
+            "missing": "技能名單中未被選到（前列）:",
+            "missing_absent": "其中缺席:",
+            "missing_not_absent": "其中未缺席但未被選到:",
+            "notes": "備註:",
+            "empty_station": "此站位沒有被分配到人。",
+        }
+    return {
+        "assigned": "Assigned:",
+        "skilled_pool": "Skilled pool for this station (top):",
+        "no_skilled_pool": "No skilled pool found for this station.",
+        "picked_has_skill": "Picked with matching skill:",
+        "picked_no_skill": "Picked people are not in the skilled pool.",
+        "fallback_1": "fallback_no_skill occurred: skilled candidates were unavailable.",
+        "fallback_2": "Common reason: skilled candidates were consumed by earlier stations.",
+        "skilled_total": "Skilled pool size:",
+        "missing": "Skilled but not picked (top):",
+        "missing_absent": "Among them absent:",
+        "missing_not_absent": "Not absent but not picked:",
+        "notes": "notes:",
+        "empty_station": "No one was assigned to this station.",
+    }
+
+
 def _build_explanation_lines(
     *,
+    language: str,
     picked: List[str],
     skilled_top: List[str],
     picked_has_skill: List[str],
@@ -184,51 +239,43 @@ def _build_explanation_lines(
     missing_and_not_absent: List[str],
     notes: List[Any],
 ) -> List[str]:
+    text = _i18n_text(language)
     lines = []
-    lines.append(f"分配到：{', '.join(picked)}")
+    lines.append(f"{text['assigned']} {', '.join(picked)}")
 
     if skilled_top:
         lines.append(
-            f"此站位有技能名單（DB Top）：{', '.join(skilled_top)}"
+            f"{text['skilled_pool']} {', '.join(skilled_top)}"
             f"{'…' if len(skilled_top) == 8 else ''}"
         )
     else:
-        lines.append("此站位 DB 查不到技能名單（可能未建 skill 或被停用）。")
+        lines.append(text["no_skilled_pool"])
 
     if picked_has_skill:
-        lines.append(f"其中具備此站技能：{', '.join(picked_has_skill)}")
+        lines.append(f"{text['picked_has_skill']} {', '.join(picked_has_skill)}")
     else:
-        lines.append("分配到的人在 DB skill 名單中找不到（= 沒技能）。")
+        lines.append(text["picked_no_skill"])
 
     if has_fallback:
-        lines.append(
-            "⚠️ 出現 fallback_no_skill：代表當輪到此站位時，候選池裡沒有"
-            "『有技能且未被用掉』的人，只好用沒技能的人頂上。"
-        )
-        lines.append(
-            "最常見原因：站位排序 + used_today 先把技能者用在其他站位，"
-            "導致此站位輪到時已無技能者可用。"
-        )
+        lines.append(text["fallback_1"])
+        lines.append(text["fallback_2"])
 
     # ====== B1-2 evidence ======
     if skilled_total is not None:
-        lines.append(f"技能名單總數：{skilled_total}")
+        lines.append(f"{text['skilled_total']} {skilled_total}")
 
     if missing:
-        lines.append(f"技能名單中未被選到（Top）：{', '.join(missing)}")
+        lines.append(f"{text['missing']} {', '.join(missing)}")
 
     if missing_but_absent:
-        lines.append(f"其中缺席（absent）者：{', '.join(missing_but_absent)}")
+        lines.append(f"{text['missing_absent']} {', '.join(missing_but_absent)}")
 
     if missing_and_not_absent:
-        lines.append(
-            "其中未缺席但未被選到（可能被其他站位先用掉 / 不可排 / 資料不一致）："
-            + ", ".join(missing_and_not_absent)
-        )
+        lines.append(f"{text['missing_not_absent']} {', '.join(missing_and_not_absent)}")
 
     # debug（可留可刪）
     if notes:
-        lines.append(f"notes: {', '.join([str(x) for x in notes])}")
+        lines.append(f"{text['notes']} {', '.join([str(x) for x in notes])}")
 
     return lines
 
@@ -236,6 +283,7 @@ def _build_explanation_lines(
 def node_explain(state: GraphState) -> GraphState:
     trace = state.get("decision_trace") or []
     explanations: Dict[str, str] = {}
+    language = _normalize_language(state.get("language"))
 
     metrics = {
         "stations_total": 0,
@@ -273,10 +321,11 @@ def node_explain(state: GraphState) -> GraphState:
 
         # ====== explain text ======
         if not picked:
-            explanations[st] = "此站位沒有被分配到人。"
+            explanations[st] = _i18n_text(language)["empty_station"]
             continue
 
         lines = _build_explanation_lines(
+            language=language,
             picked=picked,
             skilled_top=skilled_top,
             picked_has_skill=picked_has_skill,
@@ -323,13 +372,15 @@ def run_daily_schedule_graph(
     *,
     tenant_name: str,
     date_str: str,
-    absent: Optional[List[str]] = None
+    absent: Optional[List[str]] = None,
+    language: Optional[str] = None,
 ) -> Dict[str, Any]:
     graph = build_graph()
     state_in: GraphState = {
         "tenant_name": tenant_name,
         "date_str": date_str,
         "absent": absent or [],
+        "language": _normalize_language(language),
     }
     state_out = graph.invoke(state_in)
 

@@ -13,7 +13,7 @@ import random
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional  # 型別註解
 from app.week_utils import choose_shift_for_person
-from app.infra.engine_inputs import build_inputs_from_db
+from app.infra.engine_inputs import build_inputs_from_json
 import logging
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def save_json(obj, out_path: Path):
 
 
 def _build_engine_inputs_default(tenant_name: str) -> EngineInputs:
-    return build_inputs_from_db(tenant_name)
+    return build_inputs_from_json()
 
 
 # -------- 小工具 --------

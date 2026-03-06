@@ -171,6 +171,9 @@ def create_daily_run_graph(request, tenant_name: str):
     )
     if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
+    language = str(payload.get("language") or "en").strip().lower()
+    if language not in {"ja", "en", "zh"}:
+        language = "en"
 
     try:
         from app.langgraph_flow import run_daily_schedule_graph
@@ -191,6 +194,7 @@ def create_daily_run_graph(request, tenant_name: str):
             tenant_name=tenant_name,
             date_str=date_str,
             absent=absent,
+            language=language,
         )
     except Exception as exc:
         return JsonResponse(
@@ -218,9 +222,21 @@ def create_daily_run_graph(request, tenant_name: str):
     presented = present_run_out(date=date_str, out=out)
 
     stations_count = len(explanations) if isinstance(explanations, dict) else 0
-    summary = f"Generated explanation for {stations_count} station(s)."
+    if language == "ja":
+        summary = f"{stations_count} 件の站位について説明を生成しました。"
+        fallback_suffix = "fallback 使用站位: "
+    elif language == "zh":
+        summary = f"已為 {stations_count} 個站位產生說明。"
+        fallback_suffix = "fallback 使用站位："
+    else:
+        summary = f"Generated explanation for {stations_count} station(s)."
+        fallback_suffix = "Fallback used on "
     if isinstance(metrics, dict) and metrics.get("fallback_stations") is not None:
-        summary = summary + f" Fallback used on {metrics.get('fallback_stations')} station(s)."
+        count = metrics.get("fallback_stations")
+        if language == "en":
+            summary = summary + f" {fallback_suffix}{count} station(s)."
+        else:
+            summary = summary + f" {fallback_suffix}{count}"
 
     text_parts = []
     if isinstance(explanations, dict):

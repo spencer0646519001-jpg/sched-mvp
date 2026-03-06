@@ -382,7 +382,7 @@
           return;
         }
 
-        const body = { date: targetDate };
+        const body = { date: targetDate, language: currentLanguage };
         const absent = absentForDate(targetDate);
         if (absent.length) {
           body.absent = absent;
