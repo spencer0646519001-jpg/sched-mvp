@@ -97,9 +97,9 @@
       </section>
     {% endif %}
 
-    {% if refine_data %}
-      <section class="ui-card refine-diff-card">
-        <h2 data-i18n="diff_preview">{{ t.diff_preview }}</h2>
+    <section class="ui-card refine-diff-card">
+      <h2 data-i18n="diff_preview">{{ t.diff_preview }}</h2>
+      {% if refine_data %}
         {% if refine_data.diff %}
           <ul class="warning-list">
             {% for item in refine_data.diff %}
@@ -113,8 +113,10 @@
         {% else %}
           <p class="subtle" data-i18n="no_diff">{{ t.no_diff }}</p>
         {% endif %}
-      </section>
-    {% endif %}
+      {% else %}
+        <p class="subtle" data-i18n="no_refine_result_yet">{{ t.no_refine_result_yet }}</p>
+      {% endif %}
+    </section>
 
     <section class="ui-card warnings-card">
       <h2 data-i18n="weekly_rest_warnings">{{ t.weekly_rest_warnings }}</h2>

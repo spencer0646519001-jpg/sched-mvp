@@ -26,6 +26,17 @@ UI_TRANSLATIONS = {
         "actions": "アクション",
         "preview": "プレビュー",
         "download_csv": "CSVをダウンロード",
+        "refine_title": "シフト調整",
+        "refine_help": "自然言語で調整指示を入力し、差分プレビュー後に Apply / Save してください。",
+        "refine_text_label": "調整テキスト",
+        "refine_preview": "調整プレビュー",
+        "apply_save": "適用 / 保存",
+        "diff_preview": "差分プレビュー",
+        "no_diff": "差分はありません。",
+        "no_refine_result_yet": "まだ調整結果はありません。",
+        "refine_parse_failed": "調整テキストの解析に失敗しました。",
+        "apply_succeeded": "適用が完了しました。",
+        "refine_failed": "調整プレビューに失敗しました。",
         "request_error": "リクエストエラー",
         "weekly_rest_warnings": "週休チェック警告",
         "weekly_ok": "OK: 週休チェックを満たしています。",
@@ -67,6 +78,17 @@ UI_TRANSLATIONS = {
         "actions": "Actions",
         "preview": "Preview",
         "download_csv": "Download CSV",
+        "refine_title": "Refine Schedule",
+        "refine_help": "Input natural-language schedule adjustments, then preview diff before apply/save.",
+        "refine_text_label": "Refine Text",
+        "refine_preview": "Refine Preview",
+        "apply_save": "Apply / Save",
+        "diff_preview": "Diff Preview",
+        "no_diff": "No changes detected.",
+        "no_refine_result_yet": "No refine result yet",
+        "refine_parse_failed": "Refine parse failed",
+        "apply_succeeded": "Apply succeeded",
+        "refine_failed": "Refine preview failed.",
         "request_error": "Request Error",
         "weekly_rest_warnings": "Weekly Rest Warnings",
         "weekly_ok": "OK: weekly rest checks passed.",
@@ -108,6 +130,17 @@ UI_TRANSLATIONS = {
         "actions": "操作",
         "preview": "預覽",
         "download_csv": "下載 CSV",
+        "refine_title": "調整排班",
+        "refine_help": "輸入自然語言調整指令，先看差異預覽，再 Apply / Save。",
+        "refine_text_label": "調整文字",
+        "refine_preview": "調整預覽",
+        "apply_save": "套用 / 儲存",
+        "diff_preview": "差異預覽",
+        "no_diff": "沒有偵測到變更。",
+        "no_refine_result_yet": "尚未有調整結果。",
+        "refine_parse_failed": "調整文字解析失敗。",
+        "apply_succeeded": "套用成功。",
+        "refine_failed": "調整預覽失敗。",
         "request_error": "請求錯誤",
         "weekly_rest_warnings": "每週休息警示",
         "weekly_ok": "OK：每週休息檢查通過。",
@@ -168,9 +201,12 @@ def ui_monthly(request):
     t_pack.setdefault("refine_preview", "Refine Preview")
     t_pack.setdefault("apply_save", "Apply / Save")
     t_pack.setdefault("diff_preview", "Diff Preview")
-    t_pack.setdefault("apply_done", "Applied refine preview to current UI state. Save endpoint can be added later.")
+    t_pack.setdefault("apply_succeeded", "Apply succeeded")
+    t_pack.setdefault("apply_done", t_pack["apply_succeeded"])
     t_pack.setdefault("refine_failed", "Refine preview failed.")
+    t_pack.setdefault("refine_parse_failed", "Refine parse failed")
     t_pack.setdefault("no_diff", "No changes detected.")
+    t_pack.setdefault("no_refine_result_yet", "No refine result yet")
 
     ui_translations = json.loads(tr["translations_json"])
     for _, pack in ui_translations.items():
@@ -180,9 +216,12 @@ def ui_monthly(request):
         pack.setdefault("refine_preview", "Refine Preview")
         pack.setdefault("apply_save", "Apply / Save")
         pack.setdefault("diff_preview", "Diff Preview")
-        pack.setdefault("apply_done", "Applied refine preview to current UI state. Save endpoint can be added later.")
+        pack.setdefault("apply_succeeded", "Apply succeeded")
+        pack.setdefault("apply_done", pack["apply_succeeded"])
         pack.setdefault("refine_failed", "Refine preview failed.")
+        pack.setdefault("refine_parse_failed", "Refine parse failed")
         pack.setdefault("no_diff", "No changes detected.")
+        pack.setdefault("no_refine_result_yet", "No refine result yet")
 
     context = {
         "year_month": year_month,
@@ -259,10 +298,35 @@ def ui_monthly(request):
                 refine_data = json.loads(api_response.content.decode("utf-8"))
                 context["refine_data"] = refine_data
                 context["refine_preview_json"] = json.dumps(refine_data, ensure_ascii=False)
+                parse_errors = refine_data.get("parse_errors") if isinstance(refine_data, dict) else None
+                if isinstance(parse_errors, list) and parse_errors:
+                    messages = [
+                        str(item.get("message", "")).strip()
+                        for item in parse_errors
+                        if isinstance(item, dict) and str(item.get("message", "")).strip()
+                    ]
+                    message = "; ".join(messages[:3]).strip()
+                    if message:
+                        context["error_message"] = f"{context['t']['refine_parse_failed']}: {message}"
+                    else:
+                        context["error_message"] = context["t"]["refine_parse_failed"]
             else:
                 try:
                     err = json.loads(api_response.content.decode("utf-8"))
-                    context["error_message"] = err.get("detail") or context["t"]["refine_failed"]
+                    parse_errors = err.get("parse_errors") if isinstance(err, dict) else None
+                    if isinstance(parse_errors, list) and parse_errors:
+                        messages = [
+                            str(item.get("message", "")).strip()
+                            for item in parse_errors
+                            if isinstance(item, dict) and str(item.get("message", "")).strip()
+                        ]
+                        message = "; ".join(messages[:3]).strip()
+                        if message:
+                            context["error_message"] = f"{context['t']['refine_parse_failed']}: {message}"
+                        else:
+                            context["error_message"] = context["t"]["refine_parse_failed"]
+                    else:
+                        context["error_message"] = err.get("detail") or context["t"]["refine_failed"]
                 except json.JSONDecodeError:
                     context["error_message"] = f"Refine failed (HTTP {api_response.status_code})."
 
@@ -281,7 +345,7 @@ def ui_monthly(request):
                 }
                 context["refine_data"] = refine_data
                 context["refine_preview_json"] = json.dumps(refine_data, ensure_ascii=False)
-                context["apply_notice"] = context["t"]["apply_done"]
+                context["apply_notice"] = context["t"]["apply_succeeded"]
             else:
                 context["error_message"] = context["t"]["refine_failed"]
 

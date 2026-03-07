@@ -132,3 +132,41 @@ def test_ui_monthly_refine_preview_post_renders_diff_and_preview_grid():
     assert "2025-11-05" in body
     assert "refine_preview_json" in body
     assert "People Grid" in body
+
+
+def test_ui_monthly_refine_action_i18n_switches_between_ja_zh_en():
+    _django_setup()
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+
+        ja_resp = client.get("/ui/monthly")
+        en_resp = client.post(
+            "/ui/monthly",
+            data={
+                "year_month": "2025-11",
+                "language": "en",
+                "leave_requests": "{}",
+                "action": "preview",
+            },
+        )
+        zh_resp = client.post(
+            "/ui/monthly",
+            data={
+                "year_month": "2025-11",
+                "language": "zh",
+                "leave_requests": "{}",
+                "action": "preview",
+            },
+        )
+
+    assert ja_resp.status_code == 200
+    assert en_resp.status_code == 200
+    assert zh_resp.status_code == 200
+
+    ja_body = ja_resp.content.decode("utf-8")
+    en_body = en_resp.content.decode("utf-8")
+    zh_body = zh_resp.content.decode("utf-8")
+
+    assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*調整プレビュー\s*</button>', ja_body)
+    assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*Refine Preview\s*</button>', en_body)
+    assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*調整預覽\s*</button>', zh_body)
