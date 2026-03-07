@@ -68,6 +68,11 @@
         <p class="subtle" data-i18n="refine_help">{{ t.refine_help }}</p>
         <div class="field">
           <label for="refine_text" data-i18n="refine_text_label">{{ t.refine_text_label }}</label>
+          <div class="voice-controls">
+            <button type="button" id="voice-toggle" class="btn btn-soft voice-btn" data-i18n="voice_input">{{ t.voice_input }}</button>
+            <span id="voice-status" class="voice-status" data-status="idle" data-i18n="voice_status_idle">{{ t.voice_status_idle }}</span>
+          </div>
+          <p id="voice-message" class="subtle voice-message" aria-live="polite"></p>
           <textarea id="refine_text" name="refine_text" rows="4" placeholder="Masuda 2026-03-12 改成 OFF&#10;把 2026-03-15 的 gateau 換成 Kim&#10;2026-03-20 多補一個人到 oven">{{ refine_text }}</textarea>
         </div>
         <textarea id="refine_preview_json" name="refine_preview_json" class="json-input">{{ refine_preview_json }}</textarea>
@@ -247,13 +252,59 @@
       const explainStatus = document.getElementById("explain-status");
       const explainOutput = document.getElementById("explain-output");
       const yearMonthInput = document.getElementById("year_month");
+      const refineTextField = document.getElementById("refine_text");
+      const voiceToggleBtn = document.getElementById("voice-toggle");
+      const voiceStatus = document.getElementById("voice-status");
+      const voiceMessage = document.getElementById("voice-message");
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
       let leaveRequests = {};
       let currentLanguage = languageInput.value || "ja";
+      let recognition = null;
+      let voiceListening = false;
+      let voiceMessageKey = "";
 
       function getT(lang, key) {
         const selected = translations[lang] || translations.ja || {};
         return selected[key] || (translations.ja || {})[key] || key;
+      }
+
+      function voiceLocaleForLanguage(lang) {
+        if (lang === "ja") {
+          return "ja-JP";
+        }
+        if (lang === "zh") {
+          return "zh-TW";
+        }
+        return "en-US";
+      }
+
+      function setVoiceMessage(key) {
+        if (!voiceMessage) {
+          return;
+        }
+        voiceMessageKey = key || "";
+        voiceMessage.textContent = voiceMessageKey ? getT(currentLanguage, voiceMessageKey) : "";
+      }
+
+      function setVoiceState(state, messageKey) {
+        if (!voiceToggleBtn || !voiceStatus) {
+          return;
+        }
+        const stateToKey = {
+          idle: "voice_status_idle",
+          listening: "voice_status_listening",
+          unsupported: "voice_status_unsupported",
+          error: "voice_status_error",
+        };
+        const statusKey = stateToKey[state] || stateToKey.idle;
+        const btnKey = state === "listening" ? "stop" : "voice_input";
+        voiceStatus.dataset.status = state;
+        voiceStatus.dataset.i18n = statusKey;
+        voiceStatus.textContent = getT(currentLanguage, statusKey);
+        voiceToggleBtn.dataset.i18n = btnKey;
+        voiceToggleBtn.textContent = getT(currentLanguage, btnKey);
+        setVoiceMessage(messageKey || "");
       }
 
       function applyLanguageText(lang) {
@@ -263,6 +314,12 @@
           node.textContent = getT(currentLanguage, key);
         });
         document.title = getT(currentLanguage, "page_title");
+        if (voiceMessageKey) {
+          setVoiceMessage(voiceMessageKey);
+        }
+        if (recognition) {
+          recognition.lang = voiceLocaleForLanguage(currentLanguage);
+        }
       }
 
       function safeParseLeave() {
@@ -427,6 +484,71 @@
         return wrapper;
       }
 
+      function initVoiceInput() {
+        if (!voiceToggleBtn || !voiceStatus || !refineTextField) {
+          return;
+        }
+        if (!SpeechRecognition) {
+          voiceToggleBtn.disabled = true;
+          setVoiceState("unsupported", "voice_unsupported");
+          return;
+        }
+
+        recognition = new SpeechRecognition();
+        recognition.lang = voiceLocaleForLanguage(currentLanguage);
+        recognition.interimResults = false;
+        recognition.continuous = false;
+        recognition.maxAlternatives = 1;
+
+        recognition.onstart = function () {
+          voiceListening = true;
+          setVoiceState("listening", "listening");
+        };
+
+        recognition.onresult = function (event) {
+          const last = event.results && event.results[event.results.length - 1];
+          const alt = last && last[0];
+          const transcript = alt && alt.transcript ? String(alt.transcript).trim() : "";
+          if (!transcript) {
+            return;
+          }
+          const currentValue = String(refineTextField.value || "").trim();
+          refineTextField.value = currentValue ? (currentValue + "\n" + transcript) : transcript;
+        };
+
+        recognition.onerror = function () {
+          voiceListening = false;
+          setVoiceState("error", "voice_failed");
+        };
+
+        recognition.onend = function () {
+          if (voiceStatus.dataset.status !== "error" && voiceStatus.dataset.status !== "unsupported") {
+            setVoiceState("idle", "");
+          }
+          voiceListening = false;
+        };
+
+        voiceToggleBtn.addEventListener("click", function () {
+          if (!recognition) {
+            setVoiceState("unsupported", "voice_unsupported");
+            return;
+          }
+          if (voiceListening) {
+            recognition.stop();
+            return;
+          }
+          try {
+            recognition.lang = voiceLocaleForLanguage(currentLanguage);
+            setVoiceState("listening", "listening");
+            recognition.start();
+          } catch (error) {
+            setVoiceState("error", "voice_failed");
+          }
+        });
+
+        setVoiceState("idle", "");
+      }
+
       langButtons.forEach(function (btn) {
         btn.addEventListener("click", function () {
           languageInput.value = btn.dataset.lang;
@@ -494,6 +616,7 @@
       syncLeaveField();
       setLanguageActive(languageInput.value || "ja");
       applyLanguageText(languageInput.value || "ja");
+      initVoiceInput();
       renderLeaveChips();
 
       if (!explainDateInput.value) {

@@ -169,6 +169,46 @@ UI_TRANSLATIONS = {
     },
 }
 
+VOICE_UI_TRANSLATIONS = {
+    "ja": {
+        "voice_input": "音声入力",
+        "listening": "聞き取り中...",
+        "stop": "停止",
+        "voice_unsupported": "このブラウザは音声入力に対応していません。",
+        "voice_failed": "音声認識に失敗しました。",
+        "voice_status_idle": "待機中",
+        "voice_status_listening": "聞き取り中",
+        "voice_status_unsupported": "未対応",
+        "voice_status_error": "エラー",
+    },
+    "en": {
+        "voice_input": "Voice Input",
+        "listening": "Listening...",
+        "stop": "Stop",
+        "voice_unsupported": "Voice input not supported in this browser.",
+        "voice_failed": "Voice recognition failed.",
+        "voice_status_idle": "Idle",
+        "voice_status_listening": "Listening",
+        "voice_status_unsupported": "Unsupported",
+        "voice_status_error": "Error",
+    },
+    "zh": {
+        "voice_input": "語音輸入",
+        "listening": "聆聽中...",
+        "stop": "停止",
+        "voice_unsupported": "這個瀏覽器不支援語音輸入。",
+        "voice_failed": "語音辨識失敗。",
+        "voice_status_idle": "閒置",
+        "voice_status_listening": "聆聽中",
+        "voice_status_unsupported": "不支援",
+        "voice_status_error": "錯誤",
+    },
+}
+
+
+def _voice_translation_pack(language: str) -> dict:
+    return VOICE_UI_TRANSLATIONS.get(language, VOICE_UI_TRANSLATIONS["en"])
+
 
 def _translation_pack(language: str) -> dict:
     lang = language if language in UI_TRANSLATIONS else "ja"
@@ -207,9 +247,11 @@ def ui_monthly(request):
     t_pack.setdefault("refine_parse_failed", "Refine parse failed")
     t_pack.setdefault("no_diff", "No changes detected.")
     t_pack.setdefault("no_refine_result_yet", "No refine result yet")
+    for key, value in _voice_translation_pack(tr["lang"]).items():
+        t_pack.setdefault(key, value)
 
     ui_translations = json.loads(tr["translations_json"])
-    for _, pack in ui_translations.items():
+    for lang, pack in ui_translations.items():
         pack.setdefault("refine_title", "Refine Schedule")
         pack.setdefault("refine_help", "Input natural-language schedule adjustments, then preview diff before apply/save.")
         pack.setdefault("refine_text_label", "Refine Text")
@@ -222,6 +264,8 @@ def ui_monthly(request):
         pack.setdefault("refine_parse_failed", "Refine parse failed")
         pack.setdefault("no_diff", "No changes detected.")
         pack.setdefault("no_refine_result_yet", "No refine result yet")
+        for key, value in _voice_translation_pack(lang).items():
+            pack.setdefault(key, value)
 
     context = {
         "year_month": year_month,

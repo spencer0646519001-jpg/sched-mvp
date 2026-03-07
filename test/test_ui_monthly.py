@@ -94,6 +94,69 @@ def test_ui_monthly_explain_js_has_error_fallback_message():
     assert "explainOutput.innerHTML = '<p class=\"subtle\">' + fallback + detail + \"</p>\";" in body
 
 
+def test_ui_monthly_voice_input_scaffold_renders():
+    _django_setup()
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.get("/ui/monthly")
+
+    assert response.status_code == 200
+    body = response.content.decode("utf-8")
+    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>', body)
+    assert re.search(r'<span[^>]*id="voice-status"[^>]*data-status="idle"[^>]*>', body)
+    assert re.search(r'<p[^>]*id="voice-message"[^>]*>', body)
+
+
+def test_ui_monthly_voice_input_has_unsupported_fallback_path():
+    _django_setup()
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.get("/ui/monthly")
+
+    assert response.status_code == 200
+    body = response.content.decode("utf-8")
+    assert 'setVoiceState("unsupported", "voice_unsupported")' in body
+    assert "Voice input not supported in this browser." in body
+    assert "Voice recognition failed." in body
+
+
+def test_ui_monthly_voice_i18n_switches_ja_zh_en():
+    _django_setup()
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        ja_resp = client.get("/ui/monthly")
+        zh_resp = client.post(
+            "/ui/monthly",
+            data={
+                "year_month": "2025-11",
+                "language": "zh",
+                "leave_requests": "{}",
+                "action": "preview",
+            },
+        )
+        en_resp = client.post(
+            "/ui/monthly",
+            data={
+                "year_month": "2025-11",
+                "language": "en",
+                "leave_requests": "{}",
+                "action": "preview",
+            },
+        )
+
+    assert ja_resp.status_code == 200
+    assert zh_resp.status_code == 200
+    assert en_resp.status_code == 200
+
+    ja_body = ja_resp.content.decode("utf-8")
+    zh_body = zh_resp.content.decode("utf-8")
+    en_body = en_resp.content.decode("utf-8")
+
+    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*音声入力\s*</button>', ja_body)
+    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*語音輸入\s*</button>', zh_body)
+    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*Voice Input\s*</button>', en_body)
+
+
 def test_ui_monthly_download_post_returns_csv():
     _django_setup()
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
