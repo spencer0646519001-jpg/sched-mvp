@@ -7,7 +7,7 @@ from django.test.client import RequestFactory
 from django.views.decorators.http import require_http_methods
 
 from app import generate_day as gd
-from core.api_views import api_monthly_export_csv, api_monthly_preview_mirror
+from core.api_views import api_monthly_export_csv, api_monthly_preview_mirror, api_monthly_refine_mirror
 
 
 UI_TRANSLATIONS = {
@@ -156,18 +156,47 @@ def ui_monthly(request):
     year_month = request.POST.get("year_month") if request.method == "POST" else date.today().strftime("%Y-%m")
     language = request.POST.get("language", "ja")
     leave_requests_raw = request.POST.get("leave_requests", "{}")
+    refine_text = request.POST.get("refine_text", "")
+    refine_preview_raw = request.POST.get("refine_preview_json", "")
     action = request.POST.get("action", "")
 
     tr = _translation_pack(language)
+    t_pack = dict(tr["t"])
+    t_pack.setdefault("refine_title", "Refine Schedule")
+    t_pack.setdefault("refine_help", "Input natural-language schedule adjustments, then preview diff before apply/save.")
+    t_pack.setdefault("refine_text_label", "Refine Text")
+    t_pack.setdefault("refine_preview", "Refine Preview")
+    t_pack.setdefault("apply_save", "Apply / Save")
+    t_pack.setdefault("diff_preview", "Diff Preview")
+    t_pack.setdefault("apply_done", "Applied refine preview to current UI state. Save endpoint can be added later.")
+    t_pack.setdefault("refine_failed", "Refine preview failed.")
+    t_pack.setdefault("no_diff", "No changes detected.")
+
+    ui_translations = json.loads(tr["translations_json"])
+    for _, pack in ui_translations.items():
+        pack.setdefault("refine_title", "Refine Schedule")
+        pack.setdefault("refine_help", "Input natural-language schedule adjustments, then preview diff before apply/save.")
+        pack.setdefault("refine_text_label", "Refine Text")
+        pack.setdefault("refine_preview", "Refine Preview")
+        pack.setdefault("apply_save", "Apply / Save")
+        pack.setdefault("diff_preview", "Diff Preview")
+        pack.setdefault("apply_done", "Applied refine preview to current UI state. Save endpoint can be added later.")
+        pack.setdefault("refine_failed", "Refine preview failed.")
+        pack.setdefault("no_diff", "No changes detected.")
+
     context = {
         "year_month": year_month,
         "language": tr["lang"],
         "leave_requests_raw": leave_requests_raw,
+        "refine_text": refine_text,
+        "refine_preview_json": refine_preview_raw,
         "worker_names": _load_worker_names(),
         "preview_data": None,
+        "refine_data": None,
+        "apply_notice": "",
         "error_message": "",
-        "t": tr["t"],
-        "ui_translations_json": tr["translations_json"],
+        "t": t_pack,
+        "ui_translations_json": json.dumps(ui_translations, ensure_ascii=False),
     }
 
     if request.method == "POST":
@@ -216,6 +245,45 @@ def ui_monthly(request):
                 context["error_message"] = err.get("detail") or context["t"]["csv_export_failed"]
             except json.JSONDecodeError:
                 context["error_message"] = f"CSV export failed (HTTP {api_response.status_code})."
+
+        if action == "refine_preview":
+            refine_payload = dict(payload)
+            refine_payload["refine_text"] = refine_text
+            internal_request = rf.post(
+                "/api/monthly/refine",
+                data=json.dumps(refine_payload),
+                content_type="application/json",
+            )
+            api_response = api_monthly_refine_mirror(internal_request)
+            if api_response.status_code == 200:
+                refine_data = json.loads(api_response.content.decode("utf-8"))
+                context["refine_data"] = refine_data
+                context["refine_preview_json"] = json.dumps(refine_data, ensure_ascii=False)
+            else:
+                try:
+                    err = json.loads(api_response.content.decode("utf-8"))
+                    context["error_message"] = err.get("detail") or context["t"]["refine_failed"]
+                except json.JSONDecodeError:
+                    context["error_message"] = f"Refine failed (HTTP {api_response.status_code})."
+
+        if action == "apply_refine":
+            try:
+                refine_data = json.loads(refine_preview_raw or "{}")
+            except json.JSONDecodeError:
+                refine_data = {}
+
+            preview_people_grid = refine_data.get("preview_people_grid")
+            if isinstance(preview_people_grid, dict):
+                context["preview_data"] = {
+                    "people_grid": preview_people_grid,
+                    "weekly_rest_warnings": refine_data.get("weekly_rest_warnings", []),
+                    "warnings": refine_data.get("warnings", []),
+                }
+                context["refine_data"] = refine_data
+                context["refine_preview_json"] = json.dumps(refine_data, ensure_ascii=False)
+                context["apply_notice"] = context["t"]["apply_done"]
+            else:
+                context["error_message"] = context["t"]["refine_failed"]
 
     return render(request, "ui/monthly.html", context)
 

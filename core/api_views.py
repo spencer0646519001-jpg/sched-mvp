@@ -2,6 +2,7 @@
 import json
 import csv
 import io
+import re
 from datetime import date, timedelta, datetime
 
 from django.http import JsonResponse
@@ -622,6 +623,247 @@ def _build_weekly_rest_warnings_from_people_grid(people_grid: dict) -> list[dict
 
     return warnings
 
+
+def _people_grid_to_lookup(people_grid: dict) -> tuple[dict, dict, dict]:
+    date_to_index = {d: i for i, d in enumerate((people_grid.get("dates") or []))}
+    row_by_name: dict[str, dict] = {}
+    row_by_name_folded: dict[str, dict] = {}
+    for row in people_grid.get("rows", []) or []:
+        name = row.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        row_by_name[name] = row
+        row_by_name_folded[name.lower()] = row
+    return date_to_index, row_by_name, row_by_name_folded
+
+
+def _ensure_refine_row(people_grid: dict, person: str) -> dict:
+    for row in people_grid.get("rows", []) or []:
+        if row.get("name") == person:
+            return row
+    dates = people_grid.get("dates") or []
+    new_row = {
+        "name": person,
+        "role": "unknown",
+        "cells": [{"code": "", "note": ""} for _ in dates],
+    }
+    people_grid.setdefault("rows", []).append(new_row)
+    return new_row
+
+
+def _resolve_person_row(people_grid: dict, person: str) -> tuple[str, dict]:
+    date_to_index, row_by_name, row_by_name_folded = _people_grid_to_lookup(people_grid)
+    _ = date_to_index
+    if person in row_by_name:
+        return person, row_by_name[person]
+    lowered = person.lower()
+    if lowered in row_by_name_folded:
+        row = row_by_name_folded[lowered]
+        return row.get("name") or person, row
+    row = _ensure_refine_row(people_grid, person)
+    return person, row
+
+
+def _find_station_holder(people_grid: dict, date_str: str, station: str) -> tuple[str | None, dict | None]:
+    date_to_index, _, _ = _people_grid_to_lookup(people_grid)
+    idx = date_to_index.get(date_str)
+    if idx is None:
+        return None, None
+    station_norm = station.strip().lower()
+    for row in people_grid.get("rows", []) or []:
+        cells = row.get("cells") or []
+        if idx >= len(cells):
+            continue
+        cell = cells[idx] or {}
+        note = str(cell.get("note", "") or "")
+        code = str(cell.get("code", "") or "")
+        if station_norm and station_norm in note.lower() and code:
+            return row.get("name"), cell
+    return None, None
+
+
+def _apply_refine_operations(base_people_grid: dict, operations: list[dict]) -> tuple[dict, list[dict], list[str]]:
+    preview_people_grid = json.loads(json.dumps(base_people_grid))
+    diffs: list[dict] = []
+    warnings: list[str] = []
+    date_to_index, _, _ = _people_grid_to_lookup(preview_people_grid)
+
+    for op in operations:
+        op_type = op.get("type")
+        if op_type == "set_off":
+            person = op.get("person")
+            date_str = op.get("date")
+            if not person or date_str not in date_to_index:
+                warnings.append(f"REFINE_SKIPPED:set_off:{person}:{date_str}")
+                continue
+            resolved_name, row = _resolve_person_row(preview_people_grid, person)
+            idx = date_to_index[date_str]
+            cell = ((row.get("cells") or [])[idx]) or {}
+            from_code = str(cell.get("code", "") or "")
+            from_note = str(cell.get("note", "") or "")
+            to_note = "manual_refine:OFF"
+            row["cells"][idx] = {"code": "OFF", "note": to_note}
+            diffs.append(
+                {
+                    "action": "set_off",
+                    "date": date_str,
+                    "person": resolved_name,
+                    "station": None,
+                    "from": {"code": from_code, "note": from_note},
+                    "to": {"code": "OFF", "note": to_note},
+                }
+            )
+            continue
+
+        if op_type == "replace_station":
+            date_str = op.get("date")
+            station = op.get("station")
+            new_person = op.get("new_person")
+            if not date_str or date_str not in date_to_index or not station or not new_person:
+                warnings.append(f"REFINE_SKIPPED:replace_station:{date_str}:{station}:{new_person}")
+                continue
+
+            idx = date_to_index[date_str]
+            old_person, old_cell = _find_station_holder(preview_people_grid, date_str, station)
+            resolved_new_name, new_row = _resolve_person_row(preview_people_grid, new_person)
+            new_cell = ((new_row.get("cells") or [])[idx]) or {}
+
+            inherited_code = str((old_cell or {}).get("code", "") or "") or "A"
+            to_note = f"manual_refine:{station}"
+            from_new_code = str(new_cell.get("code", "") or "")
+            from_new_note = str(new_cell.get("note", "") or "")
+            new_row["cells"][idx] = {"code": inherited_code, "note": to_note}
+
+            if old_person:
+                resolved_old_name, old_row = _resolve_person_row(preview_people_grid, old_person)
+                old_row["cells"][idx] = {"code": "", "note": f"manual_refine:removed_from:{station}"}
+                diffs.append(
+                    {
+                        "action": "replace_station_old",
+                        "date": date_str,
+                        "person": resolved_old_name,
+                        "station": station,
+                        "from": {
+                            "code": str((old_cell or {}).get("code", "") or ""),
+                            "note": str((old_cell or {}).get("note", "") or ""),
+                        },
+                        "to": {"code": "", "note": f"manual_refine:removed_from:{station}"},
+                    }
+                )
+            else:
+                warnings.append(f"REFINE_NO_OLD_HOLDER:{date_str}:{station}")
+
+            diffs.append(
+                {
+                    "action": "replace_station_new",
+                    "date": date_str,
+                    "person": resolved_new_name,
+                    "station": station,
+                    "from": {"code": from_new_code, "note": from_new_note},
+                    "to": {"code": inherited_code, "note": to_note},
+                }
+            )
+            continue
+
+        if op_type == "add_station":
+            date_str = op.get("date")
+            station = op.get("station")
+            person = op.get("person")
+            if not date_str or date_str not in date_to_index or not station:
+                warnings.append(f"REFINE_SKIPPED:add_station:{date_str}:{station}")
+                continue
+
+            idx = date_to_index[date_str]
+            target_person = person
+            if not target_person:
+                for row in preview_people_grid.get("rows", []) or []:
+                    cell = ((row.get("cells") or [])[idx]) or {}
+                    if not str(cell.get("code", "") or ""):
+                        target_person = row.get("name")
+                        break
+            if not target_person:
+                warnings.append(f"REFINE_NO_FREE_PERSON:{date_str}:{station}")
+                continue
+
+            resolved_name, target_row = _resolve_person_row(preview_people_grid, target_person)
+            target_cell = ((target_row.get("cells") or [])[idx]) or {}
+            from_code = str(target_cell.get("code", "") or "")
+            from_note = str(target_cell.get("note", "") or "")
+            if from_code:
+                warnings.append(f"REFINE_OVERWRITE:{resolved_name}:{date_str}")
+            target_row["cells"][idx] = {"code": "A", "note": f"manual_refine:{station}"}
+            diffs.append(
+                {
+                    "action": "add_station",
+                    "date": date_str,
+                    "person": resolved_name,
+                    "station": station,
+                    "from": {"code": from_code, "note": from_note},
+                    "to": {"code": "A", "note": f"manual_refine:{station}"},
+                }
+            )
+            continue
+
+        warnings.append(f"REFINE_UNKNOWN_OP:{op_type}")
+
+    return preview_people_grid, diffs, warnings
+
+
+def _parse_refine_text(refine_text: str) -> tuple[list[dict], list[str]]:
+    text = str(refine_text or "").strip()
+    if not text:
+        return [], ["REFINE_TEXT_EMPTY"]
+
+    lines = [line.strip() for line in re.split(r"[\r\n;]+", text) if line.strip()]
+    ops: list[dict] = []
+    warnings: list[str] = []
+
+    for line in lines:
+        m = re.match(
+            r"^(?P<person>[A-Za-z][A-Za-z0-9_\- ]*)\s+(?P<date>\d{4}-\d{2}-\d{2})\s*(?:改成|to)\s*OFF$",
+            line,
+            re.IGNORECASE,
+        )
+        if m:
+            ops.append({"type": "set_off", "person": m.group("person").strip(), "date": m.group("date")})
+            continue
+
+        m = re.match(
+            r"^把\s*(?P<date>\d{4}-\d{2}-\d{2})\s*的\s*(?P<station>[\w\-]+)\s*換成\s*(?P<person>[A-Za-z][A-Za-z0-9_\- ]*)$",
+            line,
+            re.IGNORECASE,
+        )
+        if m:
+            ops.append(
+                {
+                    "type": "replace_station",
+                    "date": m.group("date"),
+                    "station": m.group("station"),
+                    "new_person": m.group("person").strip(),
+                }
+            )
+            continue
+
+        m = re.match(
+            r"^(?P<date>\d{4}-\d{2}-\d{2})\s*多補一個人到\s*(?P<station>[\w\-]+)(?:\s*(?:由|給|to)\s*(?P<person>[A-Za-z][A-Za-z0-9_\- ]*))?$",
+            line,
+            re.IGNORECASE,
+        )
+        if m:
+            ops.append(
+                {
+                    "type": "add_station",
+                    "date": m.group("date"),
+                    "station": m.group("station"),
+                    "person": (m.group("person") or "").strip() or None,
+                }
+            )
+            continue
+
+        warnings.append(f"REFINE_UNPARSED:{line}")
+
+    return ops, warnings
+
 def plan_to_people_grid(month_state, leave_requests):
     plan = month_state.get("plan", {}) or {}
     dates = sorted(plan.keys())
@@ -794,6 +1036,54 @@ def api_monthly_export_csv(request):
     response = HttpResponse(buf.getvalue(), content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="monthly_{validated_year_month}.csv"'
     return response
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_monthly_refine_mirror(request):
+    payload, payload_err = _parse_request_payload(request)
+    if payload_err:
+        return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    start_date, date_err = _validate_year_month(payload.get("year_month"))
+    if date_err:
+        return JsonResponse({"detail": date_err}, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    leave_requests, leave_by_date, leave_err = _validate_leave_requests(payload.get("leave_requests"))
+    if leave_err:
+        return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    language = payload.get("language") or "ja"
+    refine_text = str(payload.get("refine_text") or "")
+
+    month_state = _generate_month_state_with_leave_requests(start_date, leave_by_date)
+    month_state["language"] = language
+
+    try:
+        preview = plan_to_people_grid(month_state, leave_requests)
+    except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
+        return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
+
+    ops, parse_warnings = _parse_refine_text(refine_text)
+    preview_people_grid, diff, refine_warnings = _apply_refine_operations(preview.get("people_grid", {}), ops)
+
+    warnings = list(preview.get("warnings", []) or [])
+    warnings.extend(parse_warnings)
+    warnings.extend(refine_warnings)
+    weekly_rest_warnings = _build_weekly_rest_warnings_from_people_grid(preview_people_grid)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "diff": diff,
+            "preview_people_grid": preview_people_grid,
+            "warnings": warnings,
+            "weekly_rest_warnings": weekly_rest_warnings,
+            "explain": {"parser": "rule_based_v1", "ops_count": len(ops)},
+        },
+        json_dumps_params={"ensure_ascii": False},
+        status=200,
+    )
 
 @require_http_methods(["GET"])
 def api_month_mirror(request):

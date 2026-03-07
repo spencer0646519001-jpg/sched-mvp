@@ -11,7 +11,7 @@
   <main class="page-shell">
     <header class="hero">
       <h1 data-i18n="page_title">{{ t.page_title }}</h1>
-      <p><span data-i18n="hero_desc">{{ t.hero_desc }}</span> <code>{year_month, language, leave_requests}</code>.</p>
+      <p><span data-i18n="hero_desc">{{ t.hero_desc }}</span> <code>{year_month, language, leave_requests, refine_text}</code>.</p>
     </header>
 
     <form method="post" id="monthly-form" class="grid-layout">
@@ -63,14 +63,32 @@
         <textarea id="leave_requests" name="leave_requests" class="json-input">{{ leave_requests_raw }}</textarea>
       </section>
 
+      <section class="ui-card refine-card">
+        <h2 data-i18n="refine_title">{{ t.refine_title }}</h2>
+        <p class="subtle" data-i18n="refine_help">{{ t.refine_help }}</p>
+        <div class="field">
+          <label for="refine_text" data-i18n="refine_text_label">{{ t.refine_text_label }}</label>
+          <textarea id="refine_text" name="refine_text" rows="4" placeholder="Masuda 2026-03-12 改成 OFF&#10;把 2026-03-15 的 gateau 換成 Kim&#10;2026-03-20 多補一個人到 oven">{{ refine_text }}</textarea>
+        </div>
+        <textarea id="refine_preview_json" name="refine_preview_json" class="json-input">{{ refine_preview_json }}</textarea>
+      </section>
+
       <section class="ui-card action-card">
         <h2 data-i18n="actions">{{ t.actions }}</h2>
         <div class="actions">
           <button type="submit" name="action" value="preview" class="btn btn-primary" data-i18n="preview">{{ t.preview }}</button>
+          <button type="submit" name="action" value="refine_preview" class="btn btn-soft" data-i18n="refine_preview">{{ t.refine_preview }}</button>
+          <button type="submit" name="action" value="apply_refine" class="btn btn-secondary" data-i18n="apply_save">{{ t.apply_save }}</button>
           <button type="submit" name="action" value="download" class="btn btn-secondary" data-i18n="download_csv">{{ t.download_csv }}</button>
         </div>
       </section>
     </form>
+
+    {% if apply_notice %}
+      <section class="ui-card alert-card">
+        <p>{{ apply_notice }}</p>
+      </section>
+    {% endif %}
 
     {% if error_message %}
       <section class="ui-card alert-card error-card">
@@ -79,9 +97,38 @@
       </section>
     {% endif %}
 
+    {% if refine_data %}
+      <section class="ui-card refine-diff-card">
+        <h2 data-i18n="diff_preview">{{ t.diff_preview }}</h2>
+        {% if refine_data.diff %}
+          <ul class="warning-list">
+            {% for item in refine_data.diff %}
+              <li>
+                <span class="who">{{ item.date }}</span>
+                <span>{{ item.person }} {% if item.station %}({{ item.station }}){% endif %}</span>
+                <span class="meta">{{ item.from.code|default:"" }} -&gt; {{ item.to.code|default:"" }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="subtle" data-i18n="no_diff">{{ t.no_diff }}</p>
+        {% endif %}
+      </section>
+    {% endif %}
+
     <section class="ui-card warnings-card">
       <h2 data-i18n="weekly_rest_warnings">{{ t.weekly_rest_warnings }}</h2>
-      {% if preview_data and preview_data.weekly_rest_warnings %}
+      {% if refine_data and refine_data.weekly_rest_warnings %}
+        <ul class="warning-list">
+          {% for warning in refine_data.weekly_rest_warnings %}
+            <li>
+              <span class="who">{{ warning.person }}</span>
+              <span class="week">{{ warning.week }}</span>
+              <span class="meta">{{ warning.days_off }} OFF / required {{ warning.required }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% elif preview_data and preview_data.weekly_rest_warnings %}
         <ul class="warning-list">
           {% for warning in preview_data.weekly_rest_warnings %}
             <li>
@@ -91,7 +138,7 @@
             </li>
           {% endfor %}
         </ul>
-      {% elif preview_data %}
+      {% elif preview_data or refine_data %}
         <div class="ok-pill" data-i18n="weekly_ok">{{ t.weekly_ok }}</div>
       {% else %}
         <p class="subtle" data-i18n="run_preview_hint">{{ t.run_preview_hint }}</p>
@@ -100,9 +147,11 @@
 
     <section class="ui-card explain-card">
       <h2 data-i18n="explain_trace">{{ t.explain_trace }}</h2>
-      {% if preview_data and preview_data.weekly_rest_warnings %}
+      {% if refine_data and refine_data.weekly_rest_warnings %}
+        <p class="subtle">{{ t.summary_with_warnings_prefix }} {{ refine_data.weekly_rest_warnings|length }} {{ t.summary_with_warnings_suffix }}</p>
+      {% elif preview_data and preview_data.weekly_rest_warnings %}
         <p class="subtle">{{ t.summary_with_warnings_prefix }} {{ preview_data.weekly_rest_warnings|length }} {{ t.summary_with_warnings_suffix }}</p>
-      {% elif preview_data %}
+      {% elif preview_data or refine_data %}
         <p class="subtle">{{ t.summary_no_warnings }}</p>
       {% else %}
         <p class="subtle">{{ t.summary_waiting_preview }}</p>
@@ -125,7 +174,33 @@
       </div>
     </section>
 
-    {% if preview_data and preview_data.people_grid %}
+    {% if refine_data and refine_data.preview_people_grid %}
+      <section class="ui-card preview-card">
+        <h2 data-i18n="people_grid">{{ t.people_grid }}</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="name">{{ t.name }}</th>
+                {% for date in refine_data.preview_people_grid.dates %}
+                  <th>{{ date }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in refine_data.preview_people_grid.rows %}
+                <tr>
+                  <td>{{ row.name }} ({% if row.role == "chef" %}{{ t.role_chef }}{% elif row.role == "staff" %}{{ t.role_staff }}{% else %}{{ t.role_unknown }}{% endif %})</td>
+                  {% for cell in row.cells %}
+                    <td title="{{ cell.note }}" class="{% if cell.code == 'OFF' %}off-cell{% endif %}">{{ cell.code }}</td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% elif preview_data and preview_data.people_grid %}
       <section class="ui-card preview-card">
         <h2 data-i18n="people_grid">{{ t.people_grid }}</h2>
         <div class="table-wrap">

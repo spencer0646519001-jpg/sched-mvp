@@ -298,6 +298,7 @@ td:first-child {
 
   .controls-card,
   .leave-card,
+  .refine-card,
   .preview-card {
     grid-column: 1 / -1;
   }
