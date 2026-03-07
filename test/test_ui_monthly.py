@@ -3,6 +3,7 @@ import os
 import re
 
 import django
+from django.http import JsonResponse
 from django.test import Client
 from django.test.utils import override_settings
 
@@ -170,3 +171,43 @@ def test_ui_monthly_refine_action_i18n_switches_between_ja_zh_en():
     assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*調整プレビュー\s*</button>', ja_body)
     assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*Refine Preview\s*</button>', en_body)
     assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*調整預覽\s*</button>', zh_body)
+
+def test_ui_monthly_refine_preview_shows_fallback_parse_error(monkeypatch):
+    _django_setup()
+
+    def _fake_refine_api(_request):
+        return JsonResponse(
+            {
+                "ok": False,
+                "detail": "Unable to understand refine command",
+                "parse_errors": [
+                    {
+                        "line": "free text",
+                        "code": "llm_invalid_json",
+                        "message": "Unable to understand refine command",
+                    }
+                ],
+            },
+            status=400,
+            json_dumps_params={"ensure_ascii": False},
+        )
+
+    monkeypatch.setattr("core.ui_views.api_monthly_refine_mirror", _fake_refine_api)
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/ui/monthly",
+            data={
+                "year_month": "2026-02",
+                "language": "en",
+                "leave_requests": "{}",
+                "refine_text": "free text",
+                "action": "refine_preview",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.content.decode("utf-8")
+    assert "Refine parse failed" in body
+    assert "Unable to understand refine command" in body

@@ -32,6 +32,7 @@ from app.plan_service import (
 )
 from app.generate_week import generate_week, summarize_week
 from app.month_service import build_month
+from core.refine_llm import parse_refine_with_llm
 from core.shift_defs import (
     ShiftDefsInvalid,
     ShiftDefsNotFound,
@@ -634,6 +635,7 @@ _REFINE_OFF_SYNONYMS = {
 _REFINE_STATION_ALIASES = {
     "gateau": "gateau",
     "gateux": "gateau",
+    "oven": "gateau",
     "petitfour": "petit_four",
     "petit_four": "petit_four",
     "petit-four": "petit_four",
@@ -733,7 +735,7 @@ def _normalize_refine_date(raw_date: str, *, anchor_year: int, anchor_month: int
             month = int(m.group("m"))
             day = int(m.group("d"))
         else:
-            m = re.match(r"^(?P<m>\d{1,2})月(?P<d>\d{1,2})日$", token)
+            m = re.match(r"^(?P<m>\d{1,2})月(?P<d>\d{1,2})(?:日|号)$", token)
             if m:
                 year = anchor_year
                 month = int(m.group("m"))
@@ -801,6 +803,117 @@ def _refine_parse_error(line: str, code: str, message: str) -> dict:
         "code": code,
         "message": message,
     }
+
+
+_REFINE_LANGUAGES = {"ja", "zh", "en"}
+
+_REFINE_PARSE_I18N = {
+    "ja": {
+        "parse_failed": "調整指令を理解できませんでした",
+        "invalid_date": "日付を認識できません",
+        "date_not_in_month": "日付が対象月に含まれていません",
+        "person_not_found": "人名が見つかりません",
+        "station_not_found": "站位が見つかりません",
+        "shift_not_found": "シフトコードが見つかりません",
+        "unparsed_command": "調整指令の形式を認識できません",
+        "llm_unavailable": "LLM fallback は現在利用できません",
+        "llm_request_failed": "LLM へのリクエストに失敗しました",
+        "llm_invalid_json": "LLM の応答 JSON が不正です",
+        "llm_empty_response": "LLM の応答が空です",
+        "llm_no_command": "LLM が有効な command を返しませんでした",
+        "llm_bad_command": "LLM command の形式が不正です",
+        "llm_unsupported_intent": "LLM intent が未対応です",
+        "llm_cannot_parse": "LLM が指令を確実に解釈できませんでした",
+        "llm_unknown": "LLM fallback 解析に失敗しました",
+    },
+    "zh": {
+        "parse_failed": "無法理解調整指令",
+        "invalid_date": "無法辨識日期",
+        "date_not_in_month": "日期不在目前月份",
+        "person_not_found": "找不到人名",
+        "station_not_found": "找不到站位",
+        "shift_not_found": "找不到班別",
+        "unparsed_command": "無法辨識調整指令格式",
+        "llm_unavailable": "LLM fallback 目前不可用",
+        "llm_request_failed": "LLM 請求失敗",
+        "llm_invalid_json": "LLM 回傳的 JSON 無效",
+        "llm_empty_response": "LLM 回傳為空",
+        "llm_no_command": "LLM 沒有回傳有效 command",
+        "llm_bad_command": "LLM command 格式無效",
+        "llm_unsupported_intent": "LLM intent 不支援",
+        "llm_cannot_parse": "LLM 無法可靠解析該指令",
+        "llm_unknown": "LLM fallback 解析失敗",
+    },
+    "en": {
+        "parse_failed": "Refine parse failed",
+        "invalid_date": "Invalid date",
+        "date_not_in_month": "Date is outside the selected month",
+        "person_not_found": "Person not found",
+        "station_not_found": "Station not found",
+        "shift_not_found": "Shift code not found",
+        "unparsed_command": "Command format not recognized",
+        "llm_unavailable": "LLM fallback is unavailable",
+        "llm_request_failed": "LLM request failed",
+        "llm_invalid_json": "LLM returned invalid JSON",
+        "llm_empty_response": "LLM returned an empty response",
+        "llm_no_command": "LLM did not return a valid command",
+        "llm_bad_command": "LLM command format is invalid",
+        "llm_unsupported_intent": "LLM intent is not supported",
+        "llm_cannot_parse": "LLM could not parse this refine instruction reliably",
+        "llm_unknown": "LLM fallback parse failed",
+    },
+}
+
+_LLM_ERROR_CODE_TO_PARSE_CODE = {
+    "llm_unavailable": "llm_unavailable",
+    "request_failed": "llm_request_failed",
+    "invalid_json": "llm_invalid_json",
+    "empty_response": "llm_empty_response",
+    "no_command": "llm_no_command",
+    "bad_command": "llm_bad_command",
+    "unsupported_intent": "llm_unsupported_intent",
+    "cannot_parse": "llm_cannot_parse",
+}
+
+
+def _normalize_refine_language(language: str) -> str:
+    lang = str(language or "ja").strip().lower()
+    if lang not in _REFINE_LANGUAGES:
+        return "ja"
+    return lang
+
+
+def _refine_error_message(language: str, code: str) -> str:
+    lang = _normalize_refine_language(language)
+    table = _REFINE_PARSE_I18N.get(lang) or _REFINE_PARSE_I18N["en"]
+    return table.get(code) or table.get("parse_failed") or "Refine parse failed"
+
+
+def _localize_parse_errors(parse_errors: list[dict], language: str) -> list[dict]:
+    localized: list[dict] = []
+    for item in parse_errors:
+        if not isinstance(item, dict):
+            continue
+        code = str(item.get("code") or "").strip()
+        cloned = dict(item)
+        if code:
+            cloned["message"] = _refine_error_message(language, code)
+        elif not cloned.get("message"):
+            cloned["message"] = _refine_error_message(language, "parse_failed")
+        localized.append(cloned)
+    return localized
+
+
+def _build_refine_detail(parse_errors: list[dict], *, language: str) -> str:
+    base = _refine_error_message(language, "parse_failed")
+    readable = [
+        str(item.get("message", "")).strip()
+        for item in (parse_errors or [])
+        if isinstance(item, dict) and str(item.get("message", "")).strip()
+    ]
+    if readable:
+        return f"{base}: {'; '.join(readable[:3])}"
+    return base
 
 
 def _people_grid_to_lookup(people_grid: dict) -> tuple[dict, dict, dict]:
@@ -1207,6 +1320,253 @@ def _parse_refine_text(refine_text: str, *, start_date: str, people_grid: dict) 
 
     return ops, warnings, parse_errors
 
+
+def _known_refine_people(people_grid: dict) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for row in people_grid.get("rows", []) or []:
+        name = str((row or {}).get("name", "") or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        ordered.append(name)
+    return ordered
+
+
+def _build_refine_lookup_context(*, start_date: str, people_grid: dict) -> dict:
+    try:
+        anchor = datetime.strptime(start_date, "%Y-%m-%d").date()
+    except ValueError:
+        anchor = date.today()
+
+    valid_dates = set((people_grid.get("dates") or []))
+    person_lookup: dict[str, str] = {}
+    for row in people_grid.get("rows", []) or []:
+        name = str((row or {}).get("name", "") or "").strip()
+        if not name:
+            continue
+        person_lookup[_normalize_person_lookup_key(name)] = name
+
+    station_lookup: dict[str, str] = {}
+    for station in sorted(_known_refine_stations(people_grid)):
+        station_lookup[_normalize_station_lookup_key(station)] = station
+
+    return {
+        "anchor": anchor,
+        "valid_dates": valid_dates,
+        "person_lookup": person_lookup,
+        "station_lookup": station_lookup,
+        "shift_codes": _known_refine_shift_codes(people_grid),
+    }
+
+
+def _llm_error_to_parse_error(*, line: str, error: dict, language: str) -> dict:
+    raw_code = str((error or {}).get("code") or "").strip()
+    mapped = _LLM_ERROR_CODE_TO_PARSE_CODE.get(raw_code)
+    code = mapped or ("llm_" + raw_code if raw_code else "llm_unknown")
+    message = _refine_error_message(language, code)
+    return _refine_parse_error(line, code, message)
+
+
+def _extract_commands_from_text(raw: str) -> list[dict]:
+    text = str(raw or "").strip()
+    if not text:
+        return []
+
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        parsed = None
+
+    if isinstance(parsed, dict):
+        commands = parsed.get("commands")
+        if isinstance(commands, list):
+            return [item for item in commands if isinstance(item, dict)]
+        if parsed.get("intent"):
+            return [parsed]
+
+    kv_pairs = re.findall(
+        r"(?i)\b(intent|date|person|station|shift|target_person)\b\s*[:=]\s*([A-Za-z0-9_/\-\u4e00-\u9fff]+)",
+        text,
+    )
+    if not kv_pairs:
+        return []
+
+    command: dict[str, str] = {}
+    for key, value in kv_pairs:
+        command[str(key).strip().lower()] = str(value).strip()
+    if not command.get("intent"):
+        return []
+    return [command]
+
+
+def _extract_llm_commands(llm_result: dict) -> list[dict]:
+    if not isinstance(llm_result, dict):
+        return []
+    commands = llm_result.get("commands")
+    if isinstance(commands, list):
+        return [item for item in commands if isinstance(item, dict)]
+
+    for key in ("raw_response", "text", "content"):
+        candidate = llm_result.get(key)
+        if not isinstance(candidate, str) or not candidate.strip():
+            continue
+        parsed = _extract_commands_from_text(candidate)
+        if parsed:
+            return parsed
+    return []
+
+
+def _llm_command_to_operation(
+    *,
+    line: str,
+    command: dict,
+    context: dict,
+    language: str,
+) -> tuple[dict | None, dict | None]:
+    if not isinstance(command, dict):
+        return None, _refine_parse_error(line, "llm_bad_command", _refine_error_message(language, "llm_bad_command"))
+
+    intent = str(command.get("intent") or "").strip()
+    if intent not in {"set_shift", "replace_person", "add_person"}:
+        return None, _refine_parse_error(
+            line,
+            "llm_unsupported_intent",
+            _refine_error_message(language, "llm_unsupported_intent"),
+        )
+
+    anchor = context["anchor"]
+    valid_dates = context["valid_dates"]
+    person_lookup = context["person_lookup"]
+    station_lookup = context["station_lookup"]
+    shift_codes = context["shift_codes"]
+
+    raw_date = str(command.get("date") or "").strip()
+    normalized_date = _normalize_refine_date(raw_date, anchor_year=anchor.year, anchor_month=anchor.month)
+    if not normalized_date:
+        return None, _refine_parse_error(line, "invalid_date", _refine_error_message(language, "invalid_date"))
+    if valid_dates and normalized_date not in valid_dates:
+        return None, _refine_parse_error(
+            line,
+            "date_not_in_month",
+            _refine_error_message(language, "date_not_in_month"),
+        )
+
+    if intent == "set_shift":
+        person = _normalize_refine_person(str(command.get("person") or ""), person_lookup)
+        if not person:
+            return None, _refine_parse_error(
+                line,
+                "person_not_found",
+                _refine_error_message(language, "person_not_found"),
+            )
+        shift = _normalize_refine_shift(str(command.get("shift") or ""), shift_codes)
+        if not shift:
+            return None, _refine_parse_error(
+                line,
+                "shift_not_found",
+                _refine_error_message(language, "shift_not_found"),
+            )
+        if shift == "OFF":
+            return {"type": "set_off", "person": person, "date": normalized_date}, None
+        return {"type": "set_shift", "person": person, "date": normalized_date, "shift": shift}, None
+
+    station = _normalize_refine_station(str(command.get("station") or ""), station_lookup)
+    if not station:
+        return None, _refine_parse_error(
+            line,
+            "station_not_found",
+            _refine_error_message(language, "station_not_found"),
+        )
+
+    if intent == "replace_person":
+        raw_new_person = str(command.get("target_person") or command.get("person") or "").strip()
+        new_person = _normalize_refine_person(raw_new_person, person_lookup)
+        if not new_person:
+            return None, _refine_parse_error(
+                line,
+                "person_not_found",
+                _refine_error_message(language, "person_not_found"),
+            )
+        return {
+            "type": "replace_station",
+            "date": normalized_date,
+            "station": station,
+            "new_person": new_person,
+        }, None
+
+    raw_person = str(command.get("person") or command.get("target_person") or "").strip()
+    if raw_person:
+        person = _normalize_refine_person(raw_person, person_lookup)
+        if not person:
+            return None, _refine_parse_error(
+                line,
+                "person_not_found",
+                _refine_error_message(language, "person_not_found"),
+            )
+    else:
+        person = None
+
+    return {
+        "type": "add_station",
+        "date": normalized_date,
+        "station": station,
+        "person": person,
+    }, None
+
+
+def _parse_refine_text_with_llm_fallback(
+    *,
+    refine_text: str,
+    year_month: str,
+    start_date: str,
+    language: str,
+    people_grid: dict,
+) -> tuple[list[dict], list[str], list[dict], dict]:
+    warnings: list[str] = ["REFINE_LLM_FALLBACK_ATTEMPTED"]
+    parse_errors: list[dict] = []
+    explain: dict = {"parser": "llm_fallback_v1", "ops_count": 0, "fallback_used": True}
+
+    llm_result = parse_refine_with_llm(
+        refine_text=refine_text,
+        year_month=year_month,
+        language=language,
+        known_people=_known_refine_people(people_grid),
+        known_stations=sorted(_known_refine_stations(people_grid)),
+        known_shift_codes=sorted(_known_refine_shift_codes(people_grid)),
+    )
+
+    if not isinstance(llm_result, dict) or not llm_result.get("ok"):
+        error = llm_result.get("error") if isinstance(llm_result, dict) else {}
+        parse_errors.append(_llm_error_to_parse_error(line=refine_text, error=error if isinstance(error, dict) else {}, language=language))
+        warnings.append("REFINE_LLM_FALLBACK_FAILED")
+        return [], warnings, parse_errors, explain
+
+    commands = _extract_llm_commands(llm_result)
+    if not commands:
+        parse_errors.append(
+            _refine_parse_error(refine_text, "llm_no_command", _refine_error_message(language, "llm_no_command"))
+        )
+        warnings.append("REFINE_LLM_FALLBACK_FAILED")
+        return [], warnings, parse_errors, explain
+
+    context = _build_refine_lookup_context(start_date=start_date, people_grid=people_grid)
+    ops: list[dict] = []
+    for command in commands:
+        op, err = _llm_command_to_operation(line=refine_text, command=command, context=context, language=language)
+        if err:
+            parse_errors.append(err)
+            continue
+        if op:
+            ops.append(op)
+
+    if not ops:
+        warnings.append("REFINE_LLM_FALLBACK_FAILED")
+    else:
+        warnings.append("REFINE_LLM_FALLBACK_USED")
+    explain["ops_count"] = len(ops)
+    return ops, warnings, parse_errors, explain
+
 def plan_to_people_grid(month_state, leave_requests):
     plan = month_state.get("plan", {}) or {}
     dates = sorted(plan.keys())
@@ -1396,7 +1756,8 @@ def api_monthly_refine_mirror(request):
     if leave_err:
         return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
 
-    language = payload.get("language") or "ja"
+    language = _normalize_refine_language(payload.get("language") or "ja")
+    year_month = str(payload.get("year_month") or "")
     refine_text = str(payload.get("refine_text") or "")
 
     month_state = _generate_month_state_with_leave_requests(start_date, leave_by_date)
@@ -1412,16 +1773,56 @@ def api_monthly_refine_mirror(request):
         start_date=start_date,
         people_grid=preview.get("people_grid", {}),
     )
+    parser_name = "rule_based_v2"
+    fallback_used = False
+
     if parse_errors and not ops:
-        readable = "; ".join(err.get("message", "") for err in parse_errors if err.get("message"))
-        detail = "Refine parse failed"
-        if readable:
-            detail = f"{detail}: {readable}"
+        llm_ops, llm_warnings, llm_parse_errors, llm_explain = _parse_refine_text_with_llm_fallback(
+            refine_text=refine_text,
+            year_month=year_month,
+            start_date=start_date,
+            language=language,
+            people_grid=preview.get("people_grid", {}),
+        )
+        parse_warnings.extend(llm_warnings)
+
+        if llm_ops and not llm_parse_errors:
+            ops = llm_ops
+            parse_errors = []
+            parser_name = str(llm_explain.get("parser") or "llm_fallback_v1")
+            fallback_used = True
+        else:
+            all_parse_errors = list(parse_errors) + list(llm_parse_errors)
+            localized_errors = _localize_parse_errors(all_parse_errors, language)
+            detail = _build_refine_detail(localized_errors, language=language)
+            if not localized_errors:
+                localized_errors = [
+                    _refine_parse_error(
+                        refine_text,
+                        "llm_unknown",
+                        _refine_error_message(language, "llm_unknown"),
+                    )
+                ]
+                detail = _build_refine_detail(localized_errors, language=language)
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "detail": detail,
+                    "parse_errors": localized_errors,
+                },
+                json_dumps_params={"ensure_ascii": False},
+                status=400,
+            )
+
+    localized_parse_errors = _localize_parse_errors(parse_errors, language)
+
+    if parse_errors and not ops:
+        detail = _build_refine_detail(localized_parse_errors, language=language)
         return JsonResponse(
             {
                 "ok": False,
                 "detail": detail,
-                "parse_errors": parse_errors,
+                "parse_errors": localized_parse_errors,
             },
             json_dumps_params={"ensure_ascii": False},
             status=400,
@@ -1440,9 +1841,9 @@ def api_monthly_refine_mirror(request):
             "diff": diff,
             "preview_people_grid": preview_people_grid,
             "warnings": warnings,
-            "parse_errors": parse_errors,
+            "parse_errors": localized_parse_errors,
             "weekly_rest_warnings": weekly_rest_warnings,
-            "explain": {"parser": "rule_based_v2", "ops_count": len(ops)},
+            "explain": {"parser": parser_name, "ops_count": len(ops), "fallback_used": fallback_used},
         },
         json_dumps_params={"ensure_ascii": False},
         status=200,

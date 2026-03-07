@@ -2,6 +2,7 @@ import json
 import os
 
 import django
+import pytest
 from django.test import Client
 from django.test.utils import override_settings
 
@@ -196,5 +197,279 @@ def test_monthly_refine_parses_station_add_with_alias():
         item.get("action") == "add_station"
         and item.get("date") == "2026-02-01"
         and item.get("station") == "mise_en_place"
+        for item in (data.get("diff") or [])
+    )
+
+
+def test_monthly_refine_rule_parser_success_does_not_call_llm_fallback(monkeypatch):
+    _django_setup()
+    calls = {"count": 0}
+
+    def _fake_llm(**kwargs):
+        calls["count"] += 1
+        return {"ok": False, "error": {"code": "should_not_be_called", "message": "should_not_be_called"}}
+
+    monkeypatch.setattr("core.api_views.parse_refine_with_llm", _fake_llm)
+
+    payload = {
+        "year_month": "2026-02",
+        "language": "en",
+        "leave_requests": {},
+        "refine_text": "Spencer 2026-02-01 to D",
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/refine",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    data = json.loads(response.content.decode("utf-8"))
+    assert data.get("ok") is True
+    assert calls["count"] == 0
+    explain = data.get("explain") or {}
+    assert explain.get("parser") == "rule_based_v2"
+    assert explain.get("fallback_used") is False
+
+
+def test_monthly_refine_calls_llm_fallback_when_rule_parser_fails(monkeypatch):
+    _django_setup()
+    calls = {"count": 0}
+
+    def _fake_llm(**kwargs):
+        calls["count"] += 1
+        return {
+            "ok": True,
+            "commands": [
+                {
+                    "intent": "replace_person",
+                    "date": "2026-02-01",
+                    "station": "gateau",
+                    "target_person": "Kim",
+                }
+            ],
+        }
+
+    monkeypatch.setattr("core.api_views.parse_refine_with_llm", _fake_llm)
+
+    payload = {
+        "year_month": "2026-02",
+        "language": "en",
+        "leave_requests": {},
+        "refine_text": "Change gateau on 2/1 to Kim",
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/refine",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    data = json.loads(response.content.decode("utf-8"))
+    assert data.get("ok") is True
+    assert calls["count"] == 1
+    explain = data.get("explain") or {}
+    assert explain.get("parser") == "llm_fallback_v1"
+    assert explain.get("fallback_used") is True
+    assert any(
+        item.get("action") == "replace_station_new"
+        and item.get("date") == "2026-02-01"
+        and item.get("person") == "Kim"
+        and item.get("station") == "gateau"
+        for item in (data.get("diff") or [])
+    )
+
+
+def test_monthly_refine_llm_invalid_json_returns_readable_error(monkeypatch):
+    _django_setup()
+
+    def _fake_llm(**kwargs):
+        return {
+            "ok": False,
+            "error": {
+                "code": "invalid_json",
+                "message": "LLM returned invalid JSON",
+            },
+        }
+
+    monkeypatch.setattr("core.api_views.parse_refine_with_llm", _fake_llm)
+
+    payload = {
+        "year_month": "2026-02",
+        "language": "en",
+        "leave_requests": {},
+        "refine_text": "Masuda on 2026-02-03 should be OFF",
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/refine",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 400
+    data = json.loads(response.content.decode("utf-8"))
+    assert data.get("ok") is False
+    assert "Refine parse failed" in str(data.get("detail"))
+    parse_errors = data.get("parse_errors") or []
+    assert parse_errors
+    assert any(item.get("code") == "llm_invalid_json" for item in parse_errors if isinstance(item, dict))
+
+
+@pytest.mark.parametrize(
+    "text,llm_result,expected_action",
+    [
+        (
+            "讓 2/1 Ishikawa 休",
+            {
+                "ok": True,
+                "commands": [
+                    {
+                        "intent": "set_shift",
+                        "date": "2/1",
+                        "person": "Ishikawa",
+                        "shift": "OFF",
+                    }
+                ],
+            },
+            "set_off",
+        ),
+        (
+            "2月1號 Ishikawa 改成休假",
+            {
+                "ok": True,
+                "commands": [
+                    {
+                        "intent": "set_shift",
+                        "date": "2月1號",
+                        "person": "Ishikawa",
+                        "shift": "OFF",
+                    }
+                ],
+            },
+            "set_off",
+        ),
+        (
+            "幫我把 Spencer 2/1 改成 D",
+            {
+                "ok": True,
+                "commands": [
+                    {
+                        "intent": "set_shift",
+                        "date": "2/1",
+                        "person": "Spencer",
+                        "shift": "D",
+                    }
+                ],
+            },
+            "set_shift",
+        ),
+        (
+            "把 2/1 的 gateau 換成 Kim",
+            {
+                "ok": True,
+                "commands": [
+                    {
+                        "intent": "replace_person",
+                        "date": "2/1",
+                        "station": "gateau",
+                        "target_person": "Kim",
+                    }
+                ],
+            },
+            "replace_station_new",
+        ),
+        (
+            "2/1 oven 再補一個人",
+            {
+                "ok": True,
+                "commands": [
+                    {
+                        "intent": "add_person",
+                        "date": "2/1",
+                        "station": "oven",
+                    }
+                ],
+            },
+            "add_station",
+        ),
+    ],
+)
+def test_monthly_refine_llm_nlu_handles_natural_language_cases(monkeypatch, text, llm_result, expected_action):
+    _django_setup()
+
+    def _force_rule_parser_fail(*args, **kwargs):
+        return [], [], [{"line": text, "code": "unparsed_command", "message": "unparsed"}]
+
+    monkeypatch.setattr("core.api_views._parse_refine_text", _force_rule_parser_fail)
+    monkeypatch.setattr("core.api_views.parse_refine_with_llm", lambda **kwargs: llm_result)
+
+    payload = {
+        "year_month": "2026-02",
+        "language": "zh",
+        "leave_requests": {},
+        "refine_text": text,
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/refine",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    data = json.loads(response.content.decode("utf-8"))
+    assert data.get("ok") is True
+    explain = data.get("explain") or {}
+    assert explain.get("parser") == "llm_fallback_v1"
+    assert explain.get("fallback_used") is True
+    assert any(item.get("action") == expected_action for item in (data.get("diff") or []))
+
+
+def test_monthly_refine_llm_free_text_result_is_coerced_to_command(monkeypatch):
+    _django_setup()
+
+    def _force_rule_parser_fail(*args, **kwargs):
+        return [], [], [{"line": "free", "code": "unparsed_command", "message": "unparsed"}]
+
+    def _fake_llm(**kwargs):
+        return {
+            "ok": True,
+            "raw_response": "intent=set_shift date=2/1 person=Ishikawa shift=OFF",
+        }
+
+    monkeypatch.setattr("core.api_views._parse_refine_text", _force_rule_parser_fail)
+    monkeypatch.setattr("core.api_views.parse_refine_with_llm", _fake_llm)
+
+    payload = {
+        "year_month": "2026-02",
+        "language": "en",
+        "leave_requests": {},
+        "refine_text": "Ishikawa off on 2/1",
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/refine",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    data = json.loads(response.content.decode("utf-8"))
+    assert data.get("ok") is True
+    assert any(
+        item.get("action") == "set_off" and item.get("date") == "2026-02-01" and item.get("person") == "Ishikawa"
         for item in (data.get("diff") or [])
     )
