@@ -137,6 +137,12 @@ textarea {
   color: #7f2f1f;
 }
 
+.voice-status[data-status="transcribing"] {
+  border-color: #f0c79f;
+  background: #fff1e1;
+  color: #7b4a22;
+}
+
 .voice-status[data-status="unsupported"],
 .voice-status[data-status="error"] {
   border-color: #f1b1ad;

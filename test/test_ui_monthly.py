@@ -105,6 +105,8 @@ def test_ui_monthly_voice_input_scaffold_renders():
     assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>', body)
     assert re.search(r'<span[^>]*id="voice-status"[^>]*data-status="idle"[^>]*>', body)
     assert re.search(r'<p[^>]*id="voice-message"[^>]*>', body)
+    assert 'fetch("/api/monthly/transcribe"' in body
+    assert "voice_status_transcribing" in body
 
 
 def test_ui_monthly_voice_input_has_unsupported_fallback_path():
@@ -116,6 +118,9 @@ def test_ui_monthly_voice_input_has_unsupported_fallback_path():
     assert response.status_code == 200
     body = response.content.decode("utf-8")
     assert 'setVoiceState("unsupported", "voice_unsupported")' in body
+    assert 'startSpeechRecognitionFallback("voice_recording_unsupported_fallback")' in body
+    assert 'startSpeechRecognitionFallback("voice_transcribe_failed_fallback")' in body
+    assert "Transcribing audio..." in body
     assert "Voice input not supported in this browser." in body
     assert "Voice recognition failed." in body
 

@@ -33,6 +33,7 @@ from app.plan_service import (
 from app.generate_week import generate_week, summarize_week
 from app.month_service import build_month
 from core.refine_llm import parse_refine_with_llm
+from core.transcribe_audio import AudioTranscriptionError, transcribe_uploaded_audio
 from core.shift_defs import (
     ShiftDefsInvalid,
     ShiftDefsNotFound,
@@ -1739,6 +1740,35 @@ def api_monthly_export_csv(request):
     response = HttpResponse(buf.getvalue(), content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="monthly_{validated_year_month}.csv"'
     return response
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_monthly_transcribe(request):
+    audio_file = request.FILES.get("audio")
+    if audio_file is None:
+        return JsonResponse(
+            {"ok": False, "detail": "Missing audio file."},
+            json_dumps_params={"ensure_ascii": False},
+            status=400,
+        )
+
+    language = str(request.POST.get("language") or "").strip().lower() or None
+
+    try:
+        text = transcribe_uploaded_audio(audio_file, language=language)
+    except AudioTranscriptionError as exc:
+        return JsonResponse(
+            {"ok": False, "detail": str(exc)},
+            json_dumps_params={"ensure_ascii": False},
+            status=502,
+        )
+
+    return JsonResponse(
+        {"ok": True, "text": text},
+        json_dumps_params={"ensure_ascii": False},
+        status=200,
+    )
 
 
 @csrf_exempt

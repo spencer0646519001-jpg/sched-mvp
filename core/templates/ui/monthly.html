@@ -261,6 +261,9 @@
       let leaveRequests = {};
       let currentLanguage = languageInput.value || "ja";
       let recognition = null;
+      let mediaRecorder = null;
+      let mediaStream = null;
+      let mediaChunks = [];
       let voiceListening = false;
       let voiceMessageKey = "";
 
@@ -294,6 +297,7 @@
         const stateToKey = {
           idle: "voice_status_idle",
           listening: "voice_status_listening",
+          transcribing: "voice_status_transcribing",
           unsupported: "voice_status_unsupported",
           error: "voice_status_error",
         };
@@ -304,7 +308,176 @@
         voiceStatus.textContent = getT(currentLanguage, statusKey);
         voiceToggleBtn.dataset.i18n = btnKey;
         voiceToggleBtn.textContent = getT(currentLanguage, btnKey);
+        voiceToggleBtn.disabled = state === "transcribing";
         setVoiceMessage(messageKey || "");
+      }
+
+      function supportsAudioRecording() {
+        return !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+      }
+
+      function stopMediaStreamTracks() {
+        if (!mediaStream) {
+          return;
+        }
+        mediaStream.getTracks().forEach(function (track) {
+          track.stop();
+        });
+        mediaStream = null;
+      }
+
+      function appendRefineText(transcript) {
+        const text = String(transcript || "").trim();
+        if (!text) {
+          return;
+        }
+        const currentValue = String(refineTextField.value || "").trim();
+        refineTextField.value = currentValue ? (currentValue + "\n" + text) : text;
+      }
+
+      function ensureSpeechRecognition() {
+        if (!SpeechRecognition) {
+          return null;
+        }
+        if (recognition) {
+          return recognition;
+        }
+
+        recognition = new SpeechRecognition();
+        recognition.lang = voiceLocaleForLanguage(currentLanguage);
+        recognition.interimResults = false;
+        recognition.continuous = false;
+        recognition.maxAlternatives = 1;
+
+        recognition.onstart = function () {
+          voiceListening = true;
+        };
+
+        recognition.onresult = function (event) {
+          const last = event.results && event.results[event.results.length - 1];
+          const alt = last && last[0];
+          appendRefineText(alt && alt.transcript ? String(alt.transcript) : "");
+        };
+
+        recognition.onerror = function () {
+          voiceListening = false;
+          setVoiceState("error", "voice_failed");
+        };
+
+        recognition.onend = function () {
+          voiceListening = false;
+          if (voiceStatus.dataset.status === "listening") {
+            setVoiceState("idle", "");
+          }
+        };
+
+        return recognition;
+      }
+
+      function startSpeechRecognitionFallback(messageKey) {
+        const speech = ensureSpeechRecognition();
+        if (!speech) {
+          setVoiceState("unsupported", "voice_unsupported");
+          return false;
+        }
+        try {
+          speech.lang = voiceLocaleForLanguage(currentLanguage);
+          setVoiceState("listening", messageKey || "listening");
+          speech.start();
+          return true;
+        } catch (error) {
+          setVoiceState("error", "voice_failed");
+          return false;
+        }
+      }
+
+      async function requestServerTranscription(blob) {
+        const formData = new FormData();
+        formData.append("audio", blob, "monthly_refine_recording.webm");
+        formData.append("language", currentLanguage);
+
+        try {
+          const response = await fetch("/api/monthly/transcribe", {
+            method: "POST",
+            body: formData,
+          });
+          const payload = await response.json().catch(function () { return {}; });
+          if (!response.ok || payload.ok !== true) {
+            return false;
+          }
+          const text = String(payload.text || "").trim();
+          if (!text) {
+            return false;
+          }
+          appendRefineText(text);
+          return true;
+        } catch (error) {
+          return false;
+        }
+      }
+
+      async function onRecordedAudioReady(blob) {
+        setVoiceState("transcribing", "voice_transcribing");
+        const transcribed = await requestServerTranscription(blob);
+        if (transcribed) {
+          setVoiceState("idle", "");
+          return;
+        }
+        startSpeechRecognitionFallback("voice_transcribe_failed_fallback");
+      }
+
+      async function startMediaRecording() {
+        setVoiceState("listening", "listening");
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaChunks = [];
+          mediaRecorder = new MediaRecorder(mediaStream);
+
+          mediaRecorder.ondataavailable = function (event) {
+            if (event.data && event.data.size > 0) {
+              mediaChunks.push(event.data);
+            }
+          };
+
+          mediaRecorder.onerror = function () {
+            voiceListening = false;
+            stopMediaStreamTracks();
+            startSpeechRecognitionFallback("voice_recording_start_failed");
+          };
+
+          mediaRecorder.onstop = async function () {
+            voiceListening = false;
+            stopMediaStreamTracks();
+            const audioBlob = mediaChunks.length ? new Blob(mediaChunks, { type: mediaRecorder.mimeType || "audio/webm" }) : null;
+            mediaChunks = [];
+            mediaRecorder = null;
+            if (!audioBlob || audioBlob.size <= 0) {
+              startSpeechRecognitionFallback("voice_transcribe_failed_fallback");
+              return;
+            }
+            await onRecordedAudioReady(audioBlob);
+          };
+
+          mediaRecorder.start();
+          voiceListening = true;
+        } catch (error) {
+          voiceListening = false;
+          stopMediaStreamTracks();
+          startSpeechRecognitionFallback("voice_recording_start_failed");
+        }
+      }
+
+      function stopVoiceInput() {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+          mediaRecorder.stop();
+          return;
+        }
+        if (recognition && voiceListening) {
+          recognition.stop();
+          return;
+        }
+        voiceListening = false;
+        setVoiceState("idle", "");
       }
 
       function applyLanguageText(lang) {
@@ -488,61 +661,23 @@
         if (!voiceToggleBtn || !voiceStatus || !refineTextField) {
           return;
         }
-        if (!SpeechRecognition) {
+        if (!supportsAudioRecording() && !SpeechRecognition) {
           voiceToggleBtn.disabled = true;
           setVoiceState("unsupported", "voice_unsupported");
           return;
         }
 
-        recognition = new SpeechRecognition();
-        recognition.lang = voiceLocaleForLanguage(currentLanguage);
-        recognition.interimResults = false;
-        recognition.continuous = false;
-        recognition.maxAlternatives = 1;
-
-        recognition.onstart = function () {
-          voiceListening = true;
-          setVoiceState("listening", "listening");
-        };
-
-        recognition.onresult = function (event) {
-          const last = event.results && event.results[event.results.length - 1];
-          const alt = last && last[0];
-          const transcript = alt && alt.transcript ? String(alt.transcript).trim() : "";
-          if (!transcript) {
-            return;
-          }
-          const currentValue = String(refineTextField.value || "").trim();
-          refineTextField.value = currentValue ? (currentValue + "\n" + transcript) : transcript;
-        };
-
-        recognition.onerror = function () {
-          voiceListening = false;
-          setVoiceState("error", "voice_failed");
-        };
-
-        recognition.onend = function () {
-          if (voiceStatus.dataset.status !== "error" && voiceStatus.dataset.status !== "unsupported") {
-            setVoiceState("idle", "");
-          }
-          voiceListening = false;
-        };
-
         voiceToggleBtn.addEventListener("click", function () {
-          if (!recognition) {
-            setVoiceState("unsupported", "voice_unsupported");
-            return;
-          }
           if (voiceListening) {
-            recognition.stop();
+            stopVoiceInput();
             return;
           }
-          try {
-            recognition.lang = voiceLocaleForLanguage(currentLanguage);
-            setVoiceState("listening", "listening");
-            recognition.start();
-          } catch (error) {
-            setVoiceState("error", "voice_failed");
+          if (supportsAudioRecording()) {
+            startMediaRecording();
+            return;
+          }
+          if (!startSpeechRecognitionFallback("voice_recording_unsupported_fallback")) {
+            setVoiceState("unsupported", "voice_unsupported");
           }
         });
 

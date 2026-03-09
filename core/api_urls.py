@@ -23,6 +23,7 @@ from core.api_views import (
     api_monthly_preview_mirror,
     api_monthly_export_csv,
     api_monthly_refine_mirror,
+    api_monthly_transcribe,
 )
 from core.ui_views import ui_home
 
@@ -59,6 +60,7 @@ urlpatterns = [
     path("monthly/preview", api_monthly_preview_mirror, name="api_monthly_preview_mirror"),
     path("monthly/refine", api_monthly_refine_mirror, name="api_monthly_refine_mirror"),
     path("monthly/export.csv", api_monthly_export_csv, name="api_monthly_export_csv"),
+    path("monthly/transcribe", api_monthly_transcribe, name="api_monthly_transcribe"),
 
     # Existing UI under /api/ui/
     path("ui/", ui_home, name="ui_home"),

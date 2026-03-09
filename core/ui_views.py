@@ -178,8 +178,13 @@ VOICE_UI_TRANSLATIONS = {
         "voice_failed": "音声認識に失敗しました。",
         "voice_status_idle": "待機中",
         "voice_status_listening": "聞き取り中",
+        "voice_status_transcribing": "文字起こし中",
         "voice_status_unsupported": "未対応",
         "voice_status_error": "エラー",
+        "voice_transcribing": "音声を文字起こし中...",
+        "voice_transcribe_failed_fallback": "文字起こしに失敗しました。ブラウザ音声認識に切り替えます。",
+        "voice_recording_start_failed": "録音を開始できませんでした。ブラウザ音声認識に切り替えます。",
+        "voice_recording_unsupported_fallback": "録音が使えないため、ブラウザ音声認識を使います。",
     },
     "en": {
         "voice_input": "Voice Input",
@@ -189,8 +194,13 @@ VOICE_UI_TRANSLATIONS = {
         "voice_failed": "Voice recognition failed.",
         "voice_status_idle": "Idle",
         "voice_status_listening": "Listening",
+        "voice_status_transcribing": "Transcribing",
         "voice_status_unsupported": "Unsupported",
         "voice_status_error": "Error",
+        "voice_transcribing": "Transcribing audio...",
+        "voice_transcribe_failed_fallback": "Transcription failed. Falling back to browser speech recognition.",
+        "voice_recording_start_failed": "Unable to start recording. Falling back to browser speech recognition.",
+        "voice_recording_unsupported_fallback": "Audio recording unsupported. Falling back to browser speech recognition.",
     },
     "zh": {
         "voice_input": "語音輸入",
@@ -200,14 +210,21 @@ VOICE_UI_TRANSLATIONS = {
         "voice_failed": "語音辨識失敗。",
         "voice_status_idle": "閒置",
         "voice_status_listening": "聆聽中",
+        "voice_status_transcribing": "轉寫中",
         "voice_status_unsupported": "不支援",
         "voice_status_error": "錯誤",
+        "voice_transcribing": "正在將語音轉為文字...",
+        "voice_transcribe_failed_fallback": "轉寫失敗，已切換到瀏覽器語音辨識。",
+        "voice_recording_start_failed": "無法開始錄音，已切換到瀏覽器語音辨識。",
+        "voice_recording_unsupported_fallback": "錄音不可用，改用瀏覽器語音辨識。",
     },
 }
 
 
 def _voice_translation_pack(language: str) -> dict:
-    return VOICE_UI_TRANSLATIONS.get(language, VOICE_UI_TRANSLATIONS["en"])
+    merged = dict(VOICE_UI_TRANSLATIONS["en"])
+    merged.update(VOICE_UI_TRANSLATIONS.get(language, {}))
+    return merged
 
 
 def _translation_pack(language: str) -> dict:
