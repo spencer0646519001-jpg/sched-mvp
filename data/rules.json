@@ -11,7 +11,7 @@
   "max_consecutive_days": 4,
 
   "stations": {
-  "GATEAU": 1,
+  "GATEAU": 2,
   "petit_four": 2,
   "glaze_and_fruit": 2,
   "mise_en_place": 2

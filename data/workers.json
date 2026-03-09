@@ -25,24 +25,7 @@
       "special_leave_days": []
     },
 
-    {
-      "name": "Masuda",
-      "role": "employee",
-      "skills": ["decor", "knife", "glaze"],
-      "station_skills": ["GATEAU", "glaze_and_fruit","mise_en_place"],
-      "allowed_shifts": ["1", "2", "A"],
-      "shift_prefs": ["1", "2", "A"],           
-      "max_days_per_week": 5,
-      "min_days_per_week": 3,
-      "max_consecutive_days": 5,
-      "fixed_days_off": ["Tue"],
-      "ad_hoc_unavailable": [],
-      "wish_off": {
-        "hard": [], 
-        "soft": []},    
-      "special_leave_days": [],
-      "core": true
-    },
+  
     {
       "name": "Spencer",
       "role": "employee",
@@ -170,7 +153,7 @@
       "name": "Kim",
       "role": "employee",
       "skills": ["prep"],
-      "station_skills": ["mise_en_place","petit_four"],
+      "station_skills": ["mise_en_place","petit_four","GATEAU"],
       "shift_prefs": [],
       "max_days_per_week": 2,
       "min_days_per_week": 0,
