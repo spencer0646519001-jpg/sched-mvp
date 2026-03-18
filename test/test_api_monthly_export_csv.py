@@ -45,7 +45,7 @@ def test_monthly_export_csv_success():
 def test_monthly_export_csv_applies_leave_requests(monkeypatch):
     _django_setup()
 
-    import core.api_views as api_views
+    import core.api_views_monthly as api_views
 
     date_str = "2025-11-05"
     fake_state = {

@@ -209,7 +209,7 @@ def test_monthly_refine_rule_parser_success_does_not_call_llm_fallback(monkeypat
         calls["count"] += 1
         return {"ok": False, "error": {"code": "should_not_be_called", "message": "should_not_be_called"}}
 
-    monkeypatch.setattr("core.api_views.parse_refine_with_llm", _fake_llm)
+    monkeypatch.setattr("core.api_views_monthly.parse_refine_with_llm", _fake_llm)
 
     payload = {
         "year_month": "2026-02",
@@ -253,7 +253,7 @@ def test_monthly_refine_calls_llm_fallback_when_rule_parser_fails(monkeypatch):
             ],
         }
 
-    monkeypatch.setattr("core.api_views.parse_refine_with_llm", _fake_llm)
+    monkeypatch.setattr("core.api_views_monthly.parse_refine_with_llm", _fake_llm)
 
     payload = {
         "year_month": "2026-02",
@@ -298,7 +298,7 @@ def test_monthly_refine_llm_invalid_json_returns_readable_error(monkeypatch):
             },
         }
 
-    monkeypatch.setattr("core.api_views.parse_refine_with_llm", _fake_llm)
+    monkeypatch.setattr("core.api_views_monthly.parse_refine_with_llm", _fake_llm)
 
     payload = {
         "year_month": "2026-02",
@@ -409,8 +409,8 @@ def test_monthly_refine_llm_nlu_handles_natural_language_cases(monkeypatch, text
     def _force_rule_parser_fail(*args, **kwargs):
         return [], [], [{"line": text, "code": "unparsed_command", "message": "unparsed"}]
 
-    monkeypatch.setattr("core.api_views._parse_refine_text", _force_rule_parser_fail)
-    monkeypatch.setattr("core.api_views.parse_refine_with_llm", lambda **kwargs: llm_result)
+    monkeypatch.setattr("core.api_views_monthly._parse_refine_text", _force_rule_parser_fail)
+    monkeypatch.setattr("core.api_views_monthly.parse_refine_with_llm", lambda **kwargs: llm_result)
 
     payload = {
         "year_month": "2026-02",
@@ -448,8 +448,8 @@ def test_monthly_refine_llm_free_text_result_is_coerced_to_command(monkeypatch):
             "raw_response": "intent=set_shift date=2/1 person=Ishikawa shift=OFF",
         }
 
-    monkeypatch.setattr("core.api_views._parse_refine_text", _force_rule_parser_fail)
-    monkeypatch.setattr("core.api_views.parse_refine_with_llm", _fake_llm)
+    monkeypatch.setattr("core.api_views_monthly._parse_refine_text", _force_rule_parser_fail)
+    monkeypatch.setattr("core.api_views_monthly.parse_refine_with_llm", _fake_llm)
 
     payload = {
         "year_month": "2026-02",

@@ -23,7 +23,7 @@ def test_monthly_transcribe_success_returns_ok_and_text(monkeypatch):
         captured["name"] = uploaded_file.name
         return "Spencer 2026-03-12 OFF"
 
-    monkeypatch.setattr("core.api_views.transcribe_uploaded_audio", _fake_transcribe)
+    monkeypatch.setattr("core.api_views_monthly.transcribe_uploaded_audio", _fake_transcribe)
 
     audio = SimpleUploadedFile("voice.webm", b"fake-audio", content_type="audio/webm")
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
@@ -43,7 +43,7 @@ def test_monthly_transcribe_failure_returns_ok_false(monkeypatch):
     def _fake_transcribe(_uploaded_file, *, language=None):
         raise AudioTranscriptionError(f"transcribe failed ({language})")
 
-    monkeypatch.setattr("core.api_views.transcribe_uploaded_audio", _fake_transcribe)
+    monkeypatch.setattr("core.api_views_monthly.transcribe_uploaded_audio", _fake_transcribe)
 
     audio = SimpleUploadedFile("voice.webm", b"fake-audio", content_type="audio/webm")
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):

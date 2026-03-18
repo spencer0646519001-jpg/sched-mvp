@@ -19,7 +19,11 @@ from django.test.client import RequestFactory
 from django.views.decorators.http import require_http_methods
 
 from app import generate_day as gd
-from core.api_views import api_monthly_export_csv, api_monthly_preview_mirror, api_monthly_refine_mirror
+from core.api_views_monthly import (
+    api_monthly_export_csv,
+    api_monthly_preview_mirror,
+    api_monthly_refine_mirror,
+)
 
 
 UI_TRANSLATIONS = {

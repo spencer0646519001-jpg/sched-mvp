@@ -85,7 +85,7 @@ def test_monthly_preview_invalid_leave_requests_returns_400():
 def test_monthly_preview_weekly_rest_warnings_for_full_week(monkeypatch):
     _django_setup()
 
-    import core.api_views as api_views
+    import core.api_views_monthly as api_views
 
     week_dates = [
         "2026-01-26",
@@ -151,7 +151,7 @@ def test_monthly_preview_weekly_rest_warnings_for_full_week(monkeypatch):
 def test_monthly_preview_weekly_rest_leave_days_count_as_off(monkeypatch):
     _django_setup()
 
-    import core.api_views as api_views
+    import core.api_views_monthly as api_views
 
     week_dates = [
         "2026-01-26",
@@ -215,4 +215,3 @@ def test_monthly_preview_weekly_rest_leave_days_count_as_off(monkeypatch):
         and w.get("week") == "2026-W05"
         for w in data["weekly_rest_warnings"]
     )
-

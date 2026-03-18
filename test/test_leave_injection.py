@@ -79,6 +79,20 @@ def _load_api_views_unit(monkeypatch):
     shift_defs.build_shift_legend = lambda *_args, **_kwargs: {"": {"label": ""}, "OFF": {"label": "OFF"}}
     shift_defs.load_shift_defs = lambda *_args, **_kwargs: {}
 
+    domain_pkg = types.ModuleType("app.domain")
+    domain_pkg.__path__ = []
+
+    domain_normalize = types.ModuleType("app.domain.normalize")
+    domain_normalize.canonical_shift = lambda value: value
+    domain_normalize.canonical_station = lambda value: value
+
+    refine_llm = types.ModuleType("core.refine_llm")
+    refine_llm.parse_refine_with_llm = lambda **kwargs: {"ok": False}
+
+    transcribe_audio = types.ModuleType("core.transcribe_audio")
+    transcribe_audio.AudioTranscriptionError = type("AudioTranscriptionError", (Exception,), {})
+    transcribe_audio.transcribe_uploaded_audio = lambda *args, **kwargs: ""
+
     app_pkg = types.ModuleType("app")
     app_pkg.__path__ = []
     app_pkg.generate_day = generate_day
@@ -93,15 +107,19 @@ def _load_api_views_unit(monkeypatch):
     monkeypatch.setitem(sys.modules, "core.presenters.daily_run_presenter", daily_presenter)
     monkeypatch.setitem(sys.modules, "core.models", core_models)
     monkeypatch.setitem(sys.modules, "app", app_pkg)
+    monkeypatch.setitem(sys.modules, "app.domain", domain_pkg)
+    monkeypatch.setitem(sys.modules, "app.domain.normalize", domain_normalize)
     monkeypatch.setitem(sys.modules, "app.month_service", month_service)
     monkeypatch.setitem(sys.modules, "app.run_service", run_service)
     monkeypatch.setitem(sys.modules, "app.presenter", presenter)
     monkeypatch.setitem(sys.modules, "app.generate_day", generate_day)
     monkeypatch.setitem(sys.modules, "app.plan_service", plan_service)
     monkeypatch.setitem(sys.modules, "app.generate_week", generate_week)
+    monkeypatch.setitem(sys.modules, "core.refine_llm", refine_llm)
     monkeypatch.setitem(sys.modules, "core.shift_defs", shift_defs)
+    monkeypatch.setitem(sys.modules, "core.transcribe_audio", transcribe_audio)
 
-    module_path = Path(__file__).resolve().parents[1] / "core" / "api_views.py"
+    module_path = Path(__file__).resolve().parents[1] / "core" / "api_views_monthly.py"
     spec = importlib.util.spec_from_file_location("unit_core_api_views", module_path)
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader

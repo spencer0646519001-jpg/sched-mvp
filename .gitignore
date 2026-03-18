@@ -5,3 +5,6 @@ __pycache__/
 *.db
 db.sqlite3
 state/
+db.sqlite3.bak
+tmp_monthly_preview.json
+tmp_monthly_preview_raw.json
