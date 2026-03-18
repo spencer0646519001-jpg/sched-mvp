@@ -12,6 +12,19 @@ It serves as a solid technical foundation for future AI-assisted scheduling syst
 
 ---
 
+## Architecture Truth (Current)
+
+- Canonical backend runtime: Django (`manage.py`, `config.asgi`, `config.wsgi`)
+- Main monthly demo/review path: `GET /ui/monthly`
+- Current scheduling inputs: `data/workers.json`, `data/rules.json`, `data/shifts.json`, `data/calendar.json`
+- Current DB role: Django models/admin plus persisted daily run outputs; the monthly demo flow is still request-scoped preview/export, not DB-backed monthly plan persistence
+- Legacy/non-canonical runtime: `app/main.py` plus `app/api_*.py` FastAPI routes are rollback-only
+- Migration/parity surfaces: several Django `*_mirror` endpoints preserve older route shapes while Django is canonical
+
+See `docs/architecture.md` for the short architecture walkthrough.
+
+---
+
 ## Project Overview
 
 In real pastry kitchens:
@@ -44,8 +57,8 @@ The goal is not to claim “optimal schedules”, but to clearly answer:
 
 ### Data-Driven Configuration
 - no hard-coded stations or staff
-- all configuration managed via **Django Admin**
-- easy to adapt to different kitchens
+- current engine inputs are still loaded from `data/*.json`
+- Django Admin / SQLite currently back models and persisted run outputs
 
 ### Minimal Demo UI
 - API driver only
@@ -60,7 +73,7 @@ The goal is not to claim “optimal schedules”, but to clearly answer:
 - Django (API + Admin)
 - LangGraph (decision flow & explainability)
 - SQLite (local development)
-- JSON-based rules & constraints
+- JSON fixtures currently drive scheduling inputs
 
 ---
 
@@ -116,7 +129,9 @@ Use Django as the canonical API/runtime entrypoint:
 
 ## Emergency rollback only: Legacy FastAPI runtime
 
-FastAPI implementation remains in `app/` as a **rollback-only legacy runtime**.
+The rollback-only FastAPI runtime lives in `app/main.py` and `app/api_*.py`.
+
+The rest of `app/` still contains shared scheduling code used by Django, so `app/` should not be read as "all legacy."
 
 - **Default policy**: disabled
 - **Enable switch**: `ENABLE_LEGACY_FASTAPI_RUNTIME=1`
@@ -145,7 +160,7 @@ Turn legacy runtime off after incident mitigation:
 
 ## Legacy FastAPI Freeze Policy
 
-Legacy FastAPI code under `app/` is now **frozen**:
+Legacy FastAPI runtime code (`app/main.py` and `app/api_*.py`) is now **frozen**:
 
 - **Rollback-only** runtime for emergency continuity.
 - **Do not add new features** to FastAPI routes.
@@ -179,7 +194,7 @@ Used to manage:
 - Stations
 - Employee–Station skills
 
-All scheduling logic depends on this data. No station names or assignments are hard-coded.
+These models are real and used for admin/persistence, but they are not yet the canonical input source for the current monthly demo flow.
 
 ### 2) Simple UI (API Driver / Demo)
 
@@ -188,9 +203,9 @@ All scheduling logic depends on this data. No station names or assignments are h
 
 Purpose:
 
-- trigger daily scheduling
-- preview JSON output
-- inspect engine behavior without external tools
+- `GET /ui/monthly` is the main monthly reviewer/demo flow today
+- preview and CSV export use the same request payload
+- refine/apply is preview-only and does not persist a monthly plan
 
 ### 3) Scheduling API (Graph-Based Engine)
 
@@ -214,7 +229,18 @@ Response includes:
 
 ---
 
+### Current input reality
+
+- this endpoint is served by Django
+- the graph/explanation path still builds engine inputs from `data/*.json`
+- successful daily runs are then persisted to `ScheduleRun` / `Assignment`
+
 ## Project Structure (Simplified)
+
+Read this structure with two caveats:
+
+- `app/` mixes shared engine code with the rollback-only FastAPI wrapper; it is not all legacy.
+- `data/` is still the current source of scheduling inputs for the main demo paths.
 
 ```text
 sched-mvp/

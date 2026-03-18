@@ -1,3 +1,15 @@
+"""
+Server-rendered Django demo views.
+
+Reviewer notes:
+- `/ui/monthly` is the main monthly demo/review surface today.
+- The page does not call an external frontend app; it builds internal Django
+  requests and reuses the monthly API views in-process.
+- "Apply / Save" in this UI keeps the refined preview in page state for review
+  and export. It does not persist a monthly plan to the database.
+- Worker names for the helper controls still come from `data/workers.json`.
+"""
+
 # core/ui_views.py
 import json
 from datetime import date
@@ -243,6 +255,7 @@ def ui_home(request):
 
 @require_http_methods(["GET", "POST"])
 def ui_monthly(request):
+    """Drive the current monthly preview/refine/export demo from one Django page."""
     year_month = request.POST.get("year_month") if request.method == "POST" else date.today().strftime("%Y-%m")
     language = request.POST.get("language", "ja")
     leave_requests_raw = request.POST.get("leave_requests", "{}")
@@ -313,6 +326,8 @@ def ui_monthly(request):
             "leave_requests": leave_requests,
         }
 
+        # The demo UI reuses the Django monthly API views directly so reviewers
+        # can trace one request path without a separate frontend runtime.
         rf = RequestFactory()
 
         if action == "preview":
@@ -397,6 +412,8 @@ def ui_monthly(request):
             except json.JSONDecodeError:
                 refine_data = {}
 
+            # This is a UI-only apply step: keep the refined preview visible and
+            # exportable in the page state, but do not persist a monthly plan.
             preview_people_grid = refine_data.get("preview_people_grid")
             if isinstance(preview_people_grid, dict):
                 context["preview_data"] = {

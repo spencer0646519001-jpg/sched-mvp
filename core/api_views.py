@@ -1,3 +1,16 @@
+"""
+Canonical Django HTTP layer for the repository's current runtime.
+
+Notes for reviewers:
+- Django is the canonical backend runtime today.
+- This module contains both canonical Django endpoints and migration-era mirror
+  endpoints that preserve older route shapes during the FastAPI -> Django move.
+- The shared scheduling engine still loads its working inputs from `data/*.json`
+  on the current daily/graph/weekly/monthly paths.
+- Database models are real and used for persistence, but the monthly demo flow
+  is still request-scoped preview/refine/export rather than DB-backed planning.
+"""
+
 # core/api_views.py
 import json
 import csv
@@ -1572,6 +1585,8 @@ def plan_to_people_grid(month_state, leave_requests):
     plan = month_state.get("plan", {}) or {}
     dates = sorted(plan.keys())
 
+    # Current architecture truth: the monthly preview grid still derives its
+    # people/role ordering from the JSON fixture, not from Django ORM models.
     workers = gd.load_json("workers.json").get("people", [])
     role_by_name = {
         p.get("name"): p.get("role", "")
@@ -1790,6 +1805,8 @@ def api_monthly_refine_mirror(request):
     year_month = str(payload.get("year_month") or "")
     refine_text = str(payload.get("refine_text") or "")
 
+    # Current monthly demo path: build a request-scoped preview from JSON-backed
+    # engine inputs plus request leave overrides. No monthly plan is persisted here.
     month_state = _generate_month_state_with_leave_requests(start_date, leave_by_date)
     month_state["language"] = language
 
