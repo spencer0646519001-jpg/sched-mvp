@@ -65,7 +65,7 @@ def test_monthly_export_csv_applies_leave_requests(monkeypatch):
     monkeypatch.setattr(
         api_views,
         "_generate_month_state_with_leave_requests",
-        lambda start_date_str, leave_by_date: fake_state,
+        lambda start_date_str, leave_by_date, engine_inputs=None: fake_state,
     )
 
     payload = {

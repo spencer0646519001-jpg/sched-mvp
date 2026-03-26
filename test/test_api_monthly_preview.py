@@ -123,7 +123,7 @@ def test_monthly_preview_weekly_rest_warnings_for_full_week(monkeypatch):
     monkeypatch.setattr(
         api_views,
         "_generate_month_state_with_leave_requests",
-        lambda start_date_str, leave_by_date: fake_state,
+        lambda start_date_str, leave_by_date, engine_inputs=None: fake_state,
     )
 
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
@@ -191,7 +191,7 @@ def test_monthly_preview_weekly_rest_leave_days_count_as_off(monkeypatch):
     monkeypatch.setattr(
         api_views,
         "_generate_month_state_with_leave_requests",
-        lambda start_date_str, leave_by_date: fake_state,
+        lambda start_date_str, leave_by_date, engine_inputs=None: fake_state,
     )
 
     payload = {

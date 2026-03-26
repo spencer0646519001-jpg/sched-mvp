@@ -8,7 +8,7 @@ import json
 import argparse
 from datetime import timedelta
 from dateutil import parser as dtparser
-from typing import Dict, List
+from typing import TYPE_CHECKING, Dict, List
 
 # Use generate_day utilities and shared module-level state for day planning.
 from . import generate_day as gd
@@ -17,6 +17,9 @@ from app.infra.engine_inputs import build_inputs_from_json
 
 import csv
 from pathlib import Path
+
+if TYPE_CHECKING:
+    from app.generate_day import EngineInputs
 
 
 def load_rules():
@@ -99,6 +102,7 @@ def generate_week(
     num_days: int = 7,
     prev_state: dict | None = None,
     leave_by_date: dict[str, list[str]] | None = None,
+    inputs: "EngineInputs" = None,
 ) -> dict:
     """
     Generate a schedule from start_date for num_days using greedy assignment.
@@ -112,7 +116,7 @@ def generate_week(
     """
 
     # 1) Load normalized inputs (people, shifts, rules)
-    inputs = build_inputs_from_json()
+    inputs = inputs or build_inputs_from_json()
     people = inputs.people
     names = [p["name"] for p in people]
     rules = inputs.rules
@@ -286,4 +290,3 @@ if __name__ == "__main__":
 
     print("\n[WEEK_STATE_SUMMARY]")
     print_week_summary(week_state, args.start_date, args.days)
-

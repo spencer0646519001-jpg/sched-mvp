@@ -97,6 +97,20 @@ def _load_api_views_unit(monkeypatch):
     app_pkg.__path__ = []
     app_pkg.generate_day = generate_day
 
+    app_infra_pkg = types.ModuleType("app.infra")
+    app_infra_pkg.__path__ = []
+
+    monthly_inputs = types.ModuleType("app.infra.monthly_scheduling_inputs")
+    monthly_inputs.build_monthly_scheduling_inputs = lambda **kwargs: types.SimpleNamespace(
+        start_date=kwargs.get("start_date", ""),
+        language=kwargs.get("language", "ja"),
+        leave_requests=kwargs.get("leave_requests", {}),
+        leave_by_date=kwargs.get("leave_by_date", {}),
+        engine_inputs=None,
+        ordered_names=[],
+        role_by_name={},
+    )
+
     core_presenters_pkg = types.ModuleType("core.presenters")
     core_presenters_pkg.__path__ = []
 
@@ -107,6 +121,8 @@ def _load_api_views_unit(monkeypatch):
     monkeypatch.setitem(sys.modules, "core.presenters.daily_run_presenter", daily_presenter)
     monkeypatch.setitem(sys.modules, "core.models", core_models)
     monkeypatch.setitem(sys.modules, "app", app_pkg)
+    monkeypatch.setitem(sys.modules, "app.infra", app_infra_pkg)
+    monkeypatch.setitem(sys.modules, "app.infra.monthly_scheduling_inputs", monthly_inputs)
     monkeypatch.setitem(sys.modules, "app.domain", domain_pkg)
     monkeypatch.setitem(sys.modules, "app.domain.normalize", domain_normalize)
     monkeypatch.setitem(sys.modules, "app.month_service", month_service)
@@ -167,3 +183,34 @@ def test_generate_month_state_with_leave_requests_propagates_exceptions(monkeypa
         assert False, "expected RuntimeError"
     except RuntimeError as exc:
         assert str(exc) == "boom"
+
+
+def test_generate_month_state_with_leave_requests_passes_engine_inputs(monkeypatch):
+    api_views = _load_api_views_unit(monkeypatch)
+
+    observed = {}
+    sentinel_inputs = object()
+
+    def fake_generate_month_state(start_date_str, leave_by_date=None, engine_inputs=None):
+        observed["start_date_str"] = start_date_str
+        observed["leave_by_date"] = leave_by_date
+        observed["engine_inputs"] = engine_inputs
+        return {
+            "month_start": "2025-11-01",
+            "month_end": "2025-11-30",
+            "plan": {},
+            "summary": {},
+            "overtime": {},
+        }
+
+    monkeypatch.setattr(api_views, "_generate_month_state", fake_generate_month_state)
+
+    api_views._generate_month_state_with_leave_requests(
+        "2025-11-01",
+        {"2025-11-05": ["Kim"]},
+        engine_inputs=sentinel_inputs,
+    )
+
+    assert observed["start_date_str"] == "2025-11-01"
+    assert observed["leave_by_date"] == {"2025-11-05": ["Kim"]}
+    assert observed["engine_inputs"] is sentinel_inputs

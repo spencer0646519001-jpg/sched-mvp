@@ -14,6 +14,7 @@ from django.views.decorators.http import require_http_methods
 from app import generate_day as gd
 from app.domain.normalize import canonical_shift, canonical_station
 from app.generate_week import generate_week, summarize_week
+from app.infra.monthly_scheduling_inputs import build_monthly_scheduling_inputs
 from app.month_service import build_month
 from core.api_view_helpers import _parse_request_payload
 from core.refine_llm import parse_refine_with_llm
@@ -69,6 +70,7 @@ def api_week_csv_mirror(request):
 def _generate_month_state(
     start_date_str: str,
     leave_by_date: dict[str, list[str]] | None = None,
+    engine_inputs=None,
 ) -> dict:
     base_date = dtparser.parse(start_date_str).date()
     month_start = base_date.replace(day=1)
@@ -93,6 +95,7 @@ def _generate_month_state(
             num_days=chunk_days,
             prev_state=prev_state,
             leave_by_date=leave_by_date,
+            inputs=engine_inputs,
         )
         month_plan.update(week_state["week_plan"])
 
@@ -174,8 +177,15 @@ def _validate_leave_requests(leave_requests) -> tuple[dict, dict, str | None]:
     return clean_by_person, by_date, None
 
 
-def _generate_month_state_with_leave_requests(start_date_str: str, leave_by_date: dict[str, list[str]]) -> dict:
-    return _generate_month_state(start_date_str, leave_by_date=leave_by_date)
+def _generate_month_state_with_leave_requests(
+    start_date_str: str,
+    leave_by_date: dict[str, list[str]],
+    engine_inputs=None,
+) -> dict:
+    kwargs = {"leave_by_date": leave_by_date}
+    if engine_inputs is not None:
+        kwargs["engine_inputs"] = engine_inputs
+    return _generate_month_state(start_date_str, **kwargs)
 
 
 def _month_dates(month_state: dict) -> list[str]:
@@ -1240,20 +1250,24 @@ def _parse_refine_text_with_llm_fallback(
     explain["ops_count"] = len(ops)
     return ops, warnings, parse_errors, explain
 
-def plan_to_people_grid(month_state, leave_requests):
+def _build_monthly_preview(scheduling_inputs) -> dict:
+    """Build the canonical monthly preview from one centralized input contract."""
+    month_state = _generate_month_state_with_leave_requests(
+        scheduling_inputs.start_date,
+        scheduling_inputs.leave_by_date,
+        engine_inputs=scheduling_inputs.engine_inputs,
+    )
+    month_state["language"] = scheduling_inputs.language
+    return plan_to_people_grid(month_state, scheduling_inputs)
+
+
+def plan_to_people_grid(month_state, scheduling_inputs):
     plan = month_state.get("plan", {}) or {}
     dates = sorted(plan.keys())
 
-    # Current architecture truth: the monthly preview grid still derives its
-    # people/role ordering from the JSON fixture, not from Django ORM models.
-    workers = gd.load_json("workers.json").get("people", [])
-    role_by_name = {
-        p.get("name"): p.get("role", "")
-        for p in workers
-        if isinstance(p, dict) and p.get("name")
-    }
-
-    ordered_names = [p.get("name") for p in workers if isinstance(p, dict) and p.get("name")]
+    role_by_name = dict(scheduling_inputs.role_by_name)
+    ordered_names = list(scheduling_inputs.ordered_names)
+    leave_requests = scheduling_inputs.leave_requests
 
     for person in leave_requests.keys():
         if person not in role_by_name:
@@ -1361,12 +1375,15 @@ def api_monthly_preview_mirror(request):
         return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
 
     language = payload.get("language") or "ja"
-
-    month_state = _generate_month_state_with_leave_requests(start_date, leave_by_date)
-    month_state["language"] = language
+    scheduling_inputs = build_monthly_scheduling_inputs(
+        start_date=start_date,
+        language=language,
+        leave_requests=leave_requests,
+        leave_by_date=leave_by_date,
+    )
 
     try:
-        result = plan_to_people_grid(month_state, leave_requests)
+        result = _build_monthly_preview(scheduling_inputs)
     except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
         return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
 
@@ -1388,12 +1405,15 @@ def api_monthly_export_csv(request):
     leave_requests, leave_by_date, leave_err = _validate_leave_requests(payload.get("leave_requests"))
     if leave_err:
         return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
-
-    month_state = _generate_month_state_with_leave_requests(start_date, leave_by_date)
-    month_state["language"] = payload.get("language") or "ja"
+    scheduling_inputs = build_monthly_scheduling_inputs(
+        start_date=start_date,
+        language=payload.get("language") or "ja",
+        leave_requests=leave_requests,
+        leave_by_date=leave_by_date,
+    )
 
     try:
-        preview = plan_to_people_grid(month_state, leave_requests)
+        preview = _build_monthly_preview(scheduling_inputs)
     except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
         return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
 
@@ -1463,14 +1483,17 @@ def api_monthly_refine_mirror(request):
     language = _normalize_refine_language(payload.get("language") or "ja")
     year_month = str(payload.get("year_month") or "")
     refine_text = str(payload.get("refine_text") or "")
+    scheduling_inputs = build_monthly_scheduling_inputs(
+        start_date=start_date,
+        language=language,
+        leave_requests=leave_requests,
+        leave_by_date=leave_by_date,
+    )
 
     # Current monthly demo path: build a request-scoped preview from JSON-backed
     # engine inputs plus request leave overrides. No monthly plan is persisted here.
-    month_state = _generate_month_state_with_leave_requests(start_date, leave_by_date)
-    month_state["language"] = language
-
     try:
-        preview = plan_to_people_grid(month_state, leave_requests)
+        preview = _build_monthly_preview(scheduling_inputs)
     except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
         return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
 
