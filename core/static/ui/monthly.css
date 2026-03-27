@@ -182,12 +182,44 @@ textarea {
   gap: 8px;
 }
 
+.action-notes {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.state-note {
+  margin: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px dashed #ead2c4;
+  background: #fff8f2;
+  color: var(--maple-muted);
+}
+
+.state-note[data-state="candidate"] {
+  border-color: #f0c79f;
+  background: #fff3e6;
+  color: #7b4a22;
+}
+
+.state-note[data-state="applied"] {
+  border-color: #cfe2d2;
+  background: var(--maple-ok-bg);
+  color: var(--maple-ok-text);
+}
+
 .btn {
   border: 0;
   border-radius: 12px;
   padding: 10px 14px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.btn[disabled] {
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 .btn-primary {

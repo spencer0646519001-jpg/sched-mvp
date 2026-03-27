@@ -65,7 +65,7 @@
 
       <section class="ui-card refine-card">
         <h2 data-i18n="refine_title">{{ t.refine_title }}</h2>
-        <p class="subtle" data-i18n="refine_help">{{ t.refine_help }}</p>
+        <p class="subtle" data-i18n="refine_semantics_help">{{ t.refine_semantics_help }}</p>
         <div class="field">
           <label for="refine_text" data-i18n="refine_text_label">{{ t.refine_text_label }}</label>
           <div class="voice-controls">
@@ -81,11 +81,25 @@
 
       <section class="ui-card action-card">
         <h2 data-i18n="actions">{{ t.actions }}</h2>
+        <p class="subtle" data-i18n="action_semantics">{{ t.action_semantics }}</p>
         <div class="actions">
           <button type="submit" name="action" value="preview" class="btn btn-primary" data-i18n="preview">{{ t.preview }}</button>
           <button type="submit" name="action" value="refine_preview" class="btn btn-soft" data-i18n="refine_preview">{{ t.refine_preview }}</button>
-          <button type="submit" name="action" value="apply_refine" class="btn btn-secondary" data-i18n="apply_save">{{ t.apply_save }}</button>
-          <button type="submit" name="action" value="download" class="btn btn-secondary" data-i18n="download_csv">{{ t.download_csv }}</button>
+          <button type="submit" name="action" value="apply_refine" class="btn btn-secondary" data-i18n="apply_label" {% if not refine_preview_json %}disabled{% endif %}>{{ t.apply_label }}</button>
+          <button type="submit" name="action" value="download" class="btn btn-secondary" data-i18n="export_csv">{{ t.export_csv }}</button>
+          <button type="button" class="btn btn-secondary" data-i18n="save_label" disabled aria-disabled="true">{{ t.save_label }}</button>
+        </div>
+        <div class="action-notes">
+          {% if refine_data %}
+            {% if refine_applied %}
+              <p class="state-note" data-state="applied" data-i18n="refine_applied_notice">{{ t.refine_applied_notice }}</p>
+            {% else %}
+              <p class="state-note" data-state="candidate" data-i18n="refine_candidate_notice">{{ t.refine_candidate_notice }}</p>
+            {% endif %}
+          {% elif not refine_preview_json %}
+            <p class="state-note" data-state="hint" data-i18n="apply_disabled_help">{{ t.apply_disabled_help }}</p>
+          {% endif %}
+          <p class="state-note" data-state="disabled" data-i18n="save_disabled_help">{{ t.save_disabled_help }}</p>
         </div>
       </section>
     </form>

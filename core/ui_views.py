@@ -5,8 +5,8 @@ Reviewer notes:
 - `/ui/monthly` is the main monthly demo/review surface today.
 - The page does not call an external frontend app; it builds internal Django
   requests and reuses the monthly API views in-process.
-- "Apply / Save" in this UI keeps the refined preview in page state for review
-  and export. It does not persist a monthly plan to the database.
+- "Apply" updates the current request-scoped working state used for export.
+- "Save" is intentionally disabled until real monthly persistence exists.
 - Worker names for the helper controls still come from `data/workers.json`.
 """
 
@@ -299,11 +299,19 @@ def ui_monthly(request):
     t_pack = dict(tr["t"])
     t_pack.setdefault("refine_title", "Refine Schedule")
     t_pack.setdefault("refine_help", "Input natural-language schedule adjustments, then preview diff before apply/save.")
+    t_pack.setdefault("refine_semantics_help", "Input natural-language schedule adjustments, preview the candidate diff, then Apply it to update the working state. Save is not implemented yet.")
     t_pack.setdefault("refine_text_label", "Refine Text")
     t_pack.setdefault("refine_preview", "Refine Preview")
-    t_pack.setdefault("apply_save", "Apply / Save")
+    t_pack.setdefault("action_semantics", "Preview builds the current working schedule. Refine Preview shows candidate changes. Apply updates the working state used by Export CSV.")
+    t_pack.setdefault("apply_label", "Apply")
+    t_pack.setdefault("apply_disabled_help", "Run Refine Preview before Apply.")
+    t_pack.setdefault("save_label", "Save")
+    t_pack.setdefault("save_disabled_help", "Save is disabled until monthly persistence is implemented.")
     t_pack.setdefault("diff_preview", "Diff Preview")
-    t_pack.setdefault("apply_succeeded", "Apply succeeded")
+    t_pack.setdefault("refine_candidate_notice", "Showing a refine candidate only. Export CSV still uses the current working state until you Apply.")
+    t_pack.setdefault("refine_applied_notice", "This refine result is applied to the current working state used by Export CSV.")
+    t_pack.setdefault("apply_notice", "Applied to current working state.")
+    t_pack.setdefault("apply_succeeded", "Applied to current working state.")
     t_pack.setdefault("apply_done", t_pack["apply_succeeded"])
     t_pack.setdefault("refine_failed", "Refine preview failed.")
     t_pack.setdefault("refine_parse_failed", "Refine parse failed")
@@ -316,11 +324,19 @@ def ui_monthly(request):
     for lang, pack in ui_translations.items():
         pack.setdefault("refine_title", "Refine Schedule")
         pack.setdefault("refine_help", "Input natural-language schedule adjustments, then preview diff before apply/save.")
+        pack.setdefault("refine_semantics_help", "Input natural-language schedule adjustments, preview the candidate diff, then Apply it to update the working state. Save is not implemented yet.")
         pack.setdefault("refine_text_label", "Refine Text")
         pack.setdefault("refine_preview", "Refine Preview")
-        pack.setdefault("apply_save", "Apply / Save")
+        pack.setdefault("action_semantics", "Preview builds the current working schedule. Refine Preview shows candidate changes. Apply updates the working state used by Export CSV.")
+        pack.setdefault("apply_label", "Apply")
+        pack.setdefault("apply_disabled_help", "Run Refine Preview before Apply.")
+        pack.setdefault("save_label", "Save")
+        pack.setdefault("save_disabled_help", "Save is disabled until monthly persistence is implemented.")
         pack.setdefault("diff_preview", "Diff Preview")
-        pack.setdefault("apply_succeeded", "Apply succeeded")
+        pack.setdefault("refine_candidate_notice", "Showing a refine candidate only. Export CSV still uses the current working state until you Apply.")
+        pack.setdefault("refine_applied_notice", "This refine result is applied to the current working state used by Export CSV.")
+        pack.setdefault("apply_notice", "Applied to current working state.")
+        pack.setdefault("apply_succeeded", "Applied to current working state.")
         pack.setdefault("apply_done", pack["apply_succeeded"])
         pack.setdefault("refine_failed", "Refine preview failed.")
         pack.setdefault("refine_parse_failed", "Refine parse failed")
@@ -329,16 +345,21 @@ def ui_monthly(request):
         for key, value in _voice_translation_pack(lang).items():
             pack.setdefault(key, value)
 
+    t_pack["export_csv"] = "Export CSV" if tr["lang"] == "en" else t_pack.get("download_csv", "Export CSV")
+    for lang, pack in ui_translations.items():
+        pack["export_csv"] = "Export CSV" if lang == "en" else pack.get("download_csv", "Export CSV")
+
     context = {
         "year_month": year_month,
         "language": tr["lang"],
         "leave_requests_raw": leave_requests_raw,
         "refine_text": refine_text,
-        "refine_preview_json": "",
-        "working_state_json": "",
+        "refine_preview_json": refine_preview_raw,
+        "working_state_json": working_state_raw,
         "worker_names": _load_worker_names(),
         "preview_data": None,
         "refine_data": None,
+        "refine_applied": False,
         "apply_notice": "",
         "error_message": "",
         "t": t_pack,
@@ -373,6 +394,9 @@ def ui_monthly(request):
             if api_response.status_code == 200:
                 preview_data = json.loads(api_response.content.decode("utf-8"))
                 context["preview_data"] = preview_data
+                context["refine_data"] = None
+                context["refine_preview_json"] = ""
+                context["refine_applied"] = False
                 _store_monthly_working_state(
                     context,
                     people_grid=preview_data.get("people_grid"),
@@ -419,12 +443,7 @@ def ui_monthly(request):
                 refine_data = json.loads(api_response.content.decode("utf-8"))
                 context["refine_data"] = refine_data
                 context["refine_preview_json"] = json.dumps(refine_data, ensure_ascii=False)
-                _store_monthly_working_state(
-                    context,
-                    people_grid=refine_data.get("preview_people_grid"),
-                    weekly_rest_warnings=refine_data.get("weekly_rest_warnings", []),
-                    warnings=refine_data.get("warnings", []),
-                )
+                context["refine_applied"] = False
                 parse_errors = refine_data.get("parse_errors") if isinstance(refine_data, dict) else None
                 if isinstance(parse_errors, list) and parse_errors:
                     messages = [
@@ -464,7 +483,8 @@ def ui_monthly(request):
                 refine_data = {}
 
             # This is a UI-only apply step: keep the refined preview visible and
-            # exportable in the page state, but do not persist a monthly plan.
+            # exportable in the request-scoped working state, but do not persist
+            # a monthly plan.
             preview_people_grid = refine_data.get("preview_people_grid")
             if isinstance(preview_people_grid, dict):
                 context["preview_data"] = {
@@ -474,13 +494,14 @@ def ui_monthly(request):
                 }
                 context["refine_data"] = refine_data
                 context["refine_preview_json"] = json.dumps(refine_data, ensure_ascii=False)
+                context["refine_applied"] = True
                 _store_monthly_working_state(
                     context,
                     people_grid=preview_people_grid,
                     weekly_rest_warnings=refine_data.get("weekly_rest_warnings", []),
                     warnings=refine_data.get("warnings", []),
                 )
-                context["apply_notice"] = context["t"]["apply_succeeded"]
+                context["apply_notice"] = context["t"]["apply_notice"]
             else:
                 context["error_message"] = context["t"]["refine_failed"]
 
