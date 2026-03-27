@@ -252,6 +252,33 @@ def _translation_pack(language: str) -> dict:
     }
 
 
+def _build_monthly_working_state(*, people_grid, weekly_rest_warnings=None, warnings=None) -> dict | None:
+    if not isinstance(people_grid, dict):
+        return None
+    return {
+        "people_grid": people_grid,
+        "weekly_rest_warnings": list(weekly_rest_warnings or []),
+        "warnings": list(warnings or []),
+    }
+
+
+def _parse_monthly_working_state(raw_json: str) -> dict:
+    try:
+        parsed = json.loads(raw_json or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _store_monthly_working_state(context: dict, *, people_grid, weekly_rest_warnings=None, warnings=None) -> None:
+    state = _build_monthly_working_state(
+        people_grid=people_grid,
+        weekly_rest_warnings=weekly_rest_warnings,
+        warnings=warnings,
+    )
+    context["working_state_json"] = json.dumps(state, ensure_ascii=False) if state else ""
+
+
 @require_http_methods(["GET"])
 def ui_home(request):
     return render(request, "ui/home.html")
@@ -265,6 +292,7 @@ def ui_monthly(request):
     leave_requests_raw = request.POST.get("leave_requests", "{}")
     refine_text = request.POST.get("refine_text", "")
     refine_preview_raw = request.POST.get("refine_preview_json", "")
+    working_state_raw = request.POST.get("working_state_json", "")
     action = request.POST.get("action", "")
 
     tr = _translation_pack(language)
@@ -306,7 +334,8 @@ def ui_monthly(request):
         "language": tr["lang"],
         "leave_requests_raw": leave_requests_raw,
         "refine_text": refine_text,
-        "refine_preview_json": refine_preview_raw,
+        "refine_preview_json": "",
+        "working_state_json": "",
         "worker_names": _load_worker_names(),
         "preview_data": None,
         "refine_data": None,
@@ -342,7 +371,14 @@ def ui_monthly(request):
             )
             api_response = api_monthly_preview_mirror(internal_request)
             if api_response.status_code == 200:
-                context["preview_data"] = json.loads(api_response.content.decode("utf-8"))
+                preview_data = json.loads(api_response.content.decode("utf-8"))
+                context["preview_data"] = preview_data
+                _store_monthly_working_state(
+                    context,
+                    people_grid=preview_data.get("people_grid"),
+                    weekly_rest_warnings=preview_data.get("weekly_rest_warnings", []),
+                    warnings=preview_data.get("warnings", []),
+                )
             else:
                 try:
                     err = json.loads(api_response.content.decode("utf-8"))
@@ -351,9 +387,14 @@ def ui_monthly(request):
                     context["error_message"] = f"Preview failed (HTTP {api_response.status_code})."
 
         if action == "download":
+            export_payload = dict(payload)
+            working_state = _parse_monthly_working_state(working_state_raw)
+            working_people_grid = working_state.get("people_grid")
+            if isinstance(working_people_grid, dict):
+                export_payload["working_people_grid"] = working_people_grid
             internal_request = rf.post(
                 "/api/monthly/export.csv",
-                data=json.dumps(payload),
+                data=json.dumps(export_payload),
                 content_type="application/json",
             )
             api_response = api_monthly_export_csv(internal_request)
@@ -378,6 +419,12 @@ def ui_monthly(request):
                 refine_data = json.loads(api_response.content.decode("utf-8"))
                 context["refine_data"] = refine_data
                 context["refine_preview_json"] = json.dumps(refine_data, ensure_ascii=False)
+                _store_monthly_working_state(
+                    context,
+                    people_grid=refine_data.get("preview_people_grid"),
+                    weekly_rest_warnings=refine_data.get("weekly_rest_warnings", []),
+                    warnings=refine_data.get("warnings", []),
+                )
                 parse_errors = refine_data.get("parse_errors") if isinstance(refine_data, dict) else None
                 if isinstance(parse_errors, list) and parse_errors:
                     messages = [
@@ -427,6 +474,12 @@ def ui_monthly(request):
                 }
                 context["refine_data"] = refine_data
                 context["refine_preview_json"] = json.dumps(refine_data, ensure_ascii=False)
+                _store_monthly_working_state(
+                    context,
+                    people_grid=preview_people_grid,
+                    weekly_rest_warnings=refine_data.get("weekly_rest_warnings", []),
+                    warnings=refine_data.get("warnings", []),
+                )
                 context["apply_notice"] = context["t"]["apply_succeeded"]
             else:
                 context["error_message"] = context["t"]["refine_failed"]

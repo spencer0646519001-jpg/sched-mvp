@@ -89,3 +89,48 @@ def test_monthly_export_csv_applies_leave_requests(monkeypatch):
 
     spencer_row = next(r for r in rows[1:] if r and r[0] == "Spencer")
     assert spencer_row[date_idx] == "OFF"
+
+
+def test_monthly_export_csv_uses_provided_working_people_grid(monkeypatch):
+    _django_setup()
+
+    import core.api_views_monthly as api_views
+
+    def _unexpected_preview(_scheduling_inputs):
+        raise AssertionError("export should use the provided working_people_grid")
+
+    monkeypatch.setattr(api_views, "_build_monthly_preview", _unexpected_preview)
+
+    date_str = "2025-11-05"
+    payload = {
+        "year_month": "2025-11",
+        "language": "ja",
+        "leave_requests": {},
+        "working_people_grid": {
+            "year_month": "2025-11",
+            "dates": [date_str],
+            "rows": [
+                {
+                    "name": "Spencer",
+                    "role": "staff",
+                    "cells": [{"code": "OFF", "note": "manual_refine:OFF"}],
+                }
+            ],
+        },
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/export.csv",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    rows = list(csv.reader(io.StringIO(response.content.decode("utf-8"))))
+    header = rows[0]
+    date_idx = header.index(date_str)
+
+    spencer_row = next(r for r in rows[1:] if r and r[0] == "Spencer")
+    assert spencer_row[date_idx] == "OFF"

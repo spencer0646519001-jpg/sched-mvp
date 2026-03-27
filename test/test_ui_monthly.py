@@ -1,3 +1,6 @@
+import csv
+import html
+import io
 import json
 import os
 import re
@@ -178,6 +181,73 @@ def test_ui_monthly_download_post_returns_csv():
 
     assert response.status_code == 200
     assert "text/csv" in response["Content-Type"]
+
+
+def test_ui_monthly_download_uses_refined_working_state_after_refine_preview(monkeypatch):
+    _django_setup()
+
+    date_str = "2025-11-05"
+    fake_preview = {
+        "people_grid": {
+            "year_month": "2025-11",
+            "dates": [date_str],
+            "rows": [
+                {
+                    "name": "Spencer",
+                    "role": "staff",
+                    "cells": [{"code": "D", "note": ""}],
+                }
+            ],
+        },
+        "warnings": [],
+        "weekly_rest_warnings": [],
+    }
+
+    monkeypatch.setattr("core.api_views_monthly._build_monthly_preview", lambda _inputs: fake_preview)
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        refine_response = client.post(
+            "/ui/monthly",
+            data={
+                "year_month": "2025-11",
+                "language": "en",
+                "leave_requests": "{}",
+                "refine_text": "Spencer 2025-11-05 to OFF",
+                "action": "refine_preview",
+            },
+        )
+
+        body = refine_response.content.decode("utf-8")
+        working_state_match = re.search(
+            r'<textarea[^>]*name="working_state_json"[^>]*>(.*?)</textarea>',
+            body,
+            re.DOTALL,
+        )
+
+        assert refine_response.status_code == 200
+        assert working_state_match is not None
+
+        working_state_json = html.unescape(working_state_match.group(1)).strip()
+        download_response = client.post(
+            "/ui/monthly",
+            data={
+                "year_month": "2025-11",
+                "language": "en",
+                "leave_requests": "{}",
+                "refine_text": "Spencer 2025-11-05 to OFF",
+                "working_state_json": working_state_json,
+                "action": "download",
+            },
+        )
+
+    assert download_response.status_code == 200
+    rows = list(csv.reader(io.StringIO(download_response.content.decode("utf-8"))))
+    header = rows[0]
+    date_idx = header.index(date_str)
+
+    spencer_row = next(r for r in rows[1:] if r and r[0] == "Spencer")
+    assert spencer_row[date_idx] == "OFF"
 
 
 def test_ui_monthly_refine_preview_post_renders_diff_and_preview_grid():

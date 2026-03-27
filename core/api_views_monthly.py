@@ -1261,6 +1261,58 @@ def _build_monthly_preview(scheduling_inputs) -> dict:
     return plan_to_people_grid(month_state, scheduling_inputs)
 
 
+def _is_valid_monthly_people_grid(people_grid) -> bool:
+    if not isinstance(people_grid, dict):
+        return False
+
+    dates = people_grid.get("dates")
+    rows = people_grid.get("rows")
+    if not isinstance(dates, list) or not isinstance(rows, list):
+        return False
+    if any(not isinstance(date_str, str) for date_str in dates):
+        return False
+
+    for row in rows:
+        if not isinstance(row, dict):
+            return False
+        if not isinstance(row.get("name", ""), str):
+            return False
+
+        role = row.get("role", "")
+        if role is not None and not isinstance(role, str):
+            return False
+
+        cells = row.get("cells")
+        if not isinstance(cells, list) or len(cells) != len(dates):
+            return False
+
+        for cell in cells:
+            if not isinstance(cell, dict):
+                return False
+            code = cell.get("code", "")
+            note = cell.get("note", "")
+            if code is not None and not isinstance(code, str):
+                return False
+            if note is not None and not isinstance(note, str):
+                return False
+
+    return True
+
+
+def _resolve_monthly_export_people_grid(payload: dict, scheduling_inputs) -> dict:
+    # The monthly demo UI can carry a newer request-scoped working grid after
+    # refine/apply. Export should consume that same effective state when present,
+    # while still falling back to rebuilding the baseline preview for older callers.
+    working_people_grid = payload.get("working_people_grid")
+    if working_people_grid is not None:
+        if not _is_valid_monthly_people_grid(working_people_grid):
+            raise ValueError("Invalid 'working_people_grid' payload.")
+        return working_people_grid
+
+    preview = _build_monthly_preview(scheduling_inputs)
+    return preview.get("people_grid", {})
+
+
 def plan_to_people_grid(month_state, scheduling_inputs):
     plan = month_state.get("plan", {}) or {}
     dates = sorted(plan.keys())
@@ -1413,11 +1465,12 @@ def api_monthly_export_csv(request):
     )
 
     try:
-        preview = _build_monthly_preview(scheduling_inputs)
+        people_grid = _resolve_monthly_export_people_grid(payload, scheduling_inputs)
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=400)
     except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
         return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
 
-    people_grid = preview.get("people_grid", {})
     dates = people_grid.get("dates", [])
     rows = people_grid.get("rows", [])
 
