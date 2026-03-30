@@ -48,10 +48,11 @@ def test_build_monthly_scheduling_inputs_prefers_db_roles_for_monthly_roster(mon
 
     assert observed["tenant_name"] == "demo_kitchen"
     assert result.engine_inputs is sentinel_engine_inputs
-    assert result.ordered_names == ["Spencer", "Kim"]
+    assert result.ordered_names == ["Spencer", "Kim", "Masuda"]
     assert result.role_by_name == {
         "Spencer": "chef",
         "Kim": "staff",
+        "Masuda": "staff",
     }
 
 
@@ -131,11 +132,12 @@ def test_build_monthly_scheduling_inputs_overlays_db_station_skills_with_per_per
         tenant_name="demo_kitchen",
     )
 
-    assert result.ordered_names == ["Kim", "Spencer", "Funatsu"]
+    assert result.ordered_names == ["Kim", "Spencer", "Masuda"]
     assert result.role_by_name == {
         "Kim": "staff",
         "Spencer": "staff",
         "Funatsu": "chef",
+        "Masuda": "staff",
     }
     assert result.engine_inputs is not base_engine_inputs
     assert result.engine_inputs.station_order == ["gateau", "petit_four"]
@@ -144,3 +146,35 @@ def test_build_monthly_scheduling_inputs_overlays_db_station_skills_with_per_per
         {"name": "Spencer", "role": "employee", "station_skills": ["gateau", "glaze_and_fruit"], "core": True},
         {"name": "Funatsu", "role": "chef"},
     ]
+
+
+def test_load_monthly_roster_metadata_uses_db_active_names_but_keeps_json_role_fallback(monkeypatch):
+    monkeypatch.setattr(
+        monthly_inputs,
+        "load_workers",
+        lambda: {
+            "people": [
+                {"name": "Kim", "role": "employee"},
+                {"name": "Spencer", "role": "employee"},
+                {"name": "Funatsu", "role": "chef"},
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        monthly_inputs,
+        "load_people",
+        lambda _tenant_name: [
+            {"name": "Spencer", "role": "staff"},
+            {"name": "Masuda", "role": "staff"},
+        ],
+    )
+
+    result = monthly_inputs.load_monthly_roster_metadata(tenant_name="demo_kitchen")
+
+    assert result.ordered_names == ["Spencer", "Masuda"]
+    assert result.role_by_name == {
+        "Kim": "employee",
+        "Spencer": "staff",
+        "Funatsu": "chef",
+        "Masuda": "staff",
+    }

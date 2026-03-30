@@ -215,3 +215,69 @@ def test_monthly_preview_weekly_rest_leave_days_count_as_off(monkeypatch):
         and w.get("week") == "2026-W05"
         for w in data["weekly_rest_warnings"]
     )
+
+
+def test_monthly_preview_uses_db_backed_roster_rows_and_appends_runtime_assignments(monkeypatch):
+    _django_setup()
+
+    import app.infra.monthly_scheduling_inputs as monthly_inputs
+    import core.api_views_monthly as api_views
+
+    date_str = "2025-11-05"
+    fake_state = {
+        "month_start": date_str,
+        "month_end": date_str,
+        "plan": {
+            date_str: {
+                "assignments": {
+                    "gateau": [{"name": "Kim", "shift": "A"}],
+                },
+                "warnings": [],
+                "chefs_present": [],
+            }
+        },
+        "summary": {},
+        "overtime": {},
+    }
+
+    monkeypatch.setattr(
+        api_views,
+        "_generate_month_state_with_leave_requests",
+        lambda start_date_str, leave_by_date, engine_inputs=None: fake_state,
+    )
+    monkeypatch.setattr(
+        monthly_inputs,
+        "load_workers",
+        lambda: {
+            "people": [
+                {"name": "Kim", "role": "employee"},
+                {"name": "Spencer", "role": "employee"},
+                {"name": "Funatsu", "role": "chef"},
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        monthly_inputs,
+        "load_people",
+        lambda _tenant_name: [
+            {"name": "Spencer", "role": "staff"},
+        ],
+    )
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/preview",
+            data=json.dumps({"year_month": "2025-11", "leave_requests": {}}),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    data = json.loads(response.content.decode("utf-8"))
+    rows = data["people_grid"]["rows"]
+
+    assert [row["name"] for row in rows] == ["Spencer", "Kim"]
+    assert {row["name"]: row["role"] for row in rows} == {
+        "Spencer": "staff",
+        "Kim": "staff",
+    }

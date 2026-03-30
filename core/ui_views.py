@@ -7,7 +7,7 @@ Reviewer notes:
   requests and reuses the monthly API views in-process.
 - "Apply" updates the current request-scoped working state used for export.
 - "Save" is intentionally disabled until real monthly persistence exists.
-- Worker names for the helper controls still come from `data/workers.json`.
+- Monthly helper names now reuse the canonical roster metadata read-path.
 """
 
 # core/ui_views.py
@@ -18,7 +18,10 @@ from django.shortcuts import render
 from django.test.client import RequestFactory
 from django.views.decorators.http import require_http_methods
 
-from app import generate_day as gd
+from app.infra.monthly_scheduling_inputs import (
+    MONTHLY_DEMO_TENANT_NAME,
+    load_monthly_roster_metadata,
+)
 from core.api_views_monthly import (
     api_monthly_export_csv,
     api_monthly_preview_mirror,
@@ -510,7 +513,7 @@ def ui_monthly(request):
 
 def _load_worker_names():
     try:
-        workers = gd.load_json("workers.json").get("people", [])
+        roster_metadata = load_monthly_roster_metadata(tenant_name=MONTHLY_DEMO_TENANT_NAME)
     except Exception:
-        workers = []
-    return [person.get("name") for person in workers if isinstance(person, dict) and person.get("name")]
+        return []
+    return list(roster_metadata.ordered_names)

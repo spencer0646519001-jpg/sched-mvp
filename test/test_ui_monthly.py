@@ -4,6 +4,7 @@ import io
 import json
 import os
 import re
+from types import SimpleNamespace
 
 import django
 from django.http import JsonResponse
@@ -42,6 +43,27 @@ def test_ui_monthly_get_renders():
     assert re.search(r'<button[^>]*value="apply_refine"[^>]*disabled[^>]*>\s*Apply\s*</button>', body)
     assert re.search(r'<button[^>]*type="button"[^>]*data-i18n="save_label"[^>]*disabled[^>]*>\s*Save\s*</button>', body)
     assert "Save is disabled until monthly persistence is implemented." in body
+
+
+def test_ui_monthly_helper_names_follow_roster_metadata_provider(monkeypatch):
+    _django_setup()
+
+    monkeypatch.setattr(
+        "core.ui_views.load_monthly_roster_metadata",
+        lambda tenant_name: SimpleNamespace(
+            ordered_names=["DB Spencer", "DB Masuda"],
+            role_by_name={"DB Spencer": "staff", "DB Masuda": "staff"},
+        ),
+    )
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.get("/ui/monthly")
+
+    assert response.status_code == 200
+    body = response.content.decode("utf-8")
+    assert '<option value="DB Spencer">DB Spencer</option>' in body
+    assert '<option value="DB Masuda">DB Masuda</option>' in body
 
 
 def test_ui_monthly_preview_post_renders_grid():
