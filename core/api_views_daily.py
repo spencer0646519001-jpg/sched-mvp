@@ -5,12 +5,58 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from app import generate_day as gd
+from app.domain.normalize import canonical_station
+from app.infra.station_metadata import load_station_metadata_overlay, serialize_station_metadata
 from app.month_service import run_daily_schedule
 from app.presenter import present_api_error, present_api_success, present_run_out
 from app.run_service import build_out_from_run
 from core.api_view_helpers import _parse_request_payload, _validate_daily_run_payload
 from core.models import ScheduleRun
 from core.presenters.daily_run_presenter import present_create_daily_run_success
+
+
+def _ordered_station_codes_from_graph_output(out, trace, explanations) -> list[str]:
+    ordered_codes: list[str] = []
+    seen: set[str] = set()
+
+    def remember(raw_station) -> None:
+        code = canonical_station(str(raw_station or ""))
+        if not code or code in seen:
+            return
+        ordered_codes.append(code)
+        seen.add(code)
+
+    if isinstance(trace, list):
+        for item in trace:
+            if isinstance(item, dict):
+                remember(item.get("station"))
+
+    if isinstance(explanations, dict):
+        for station in explanations.keys():
+            remember(station)
+
+    assignments = out.get("assignments") if isinstance(out, dict) else {}
+    if isinstance(assignments, dict):
+        for station in assignments.keys():
+            remember(station)
+
+    return ordered_codes
+
+
+def _annotate_trace_station_labels(trace, station_labels: dict[str, str]) -> list[dict]:
+    if not isinstance(trace, list):
+        return []
+
+    annotated: list[dict] = []
+    for item in trace:
+        if not isinstance(item, dict):
+            continue
+        copied = dict(item)
+        station = canonical_station(str(copied.get("station") or ""))
+        if station:
+            copied["station_label"] = station_labels.get(station, station)
+        annotated.append(copied)
+    return annotated
 
 
 @require_http_methods(["GET"])
@@ -159,6 +205,17 @@ def create_daily_run_graph(request, tenant_name: str):
 
     out["explanations"] = explanations
     presented = present_run_out(date=date_str, out=out)
+    station_codes = _ordered_station_codes_from_graph_output(out, trace, explanations)
+    station_metadata_overlay = load_station_metadata_overlay(
+        tenant_name=tenant_name,
+        base_station_codes=station_codes,
+    )
+    station_labels = dict(getattr(station_metadata_overlay, "labels", {}) or {})
+    trace_with_labels = _annotate_trace_station_labels(trace, station_labels)
+    serialized_station_metadata = serialize_station_metadata(
+        station_metadata_overlay,
+        station_codes=station_codes,
+    )
 
     stations_count = len(explanations) if isinstance(explanations, dict) else 0
     if language == "ja":
@@ -189,14 +246,16 @@ def create_daily_run_graph(request, tenant_name: str):
             "ok": True,
             "date": date_str,
             "summary": summary,
-            "trace": trace if isinstance(trace, list) else [],
+            "trace": trace_with_labels,
             "text": text,
             "metrics": metrics if isinstance(metrics, dict) else {},
             "explanations": explanations if isinstance(explanations, dict) else {},
+            "station_labels": station_labels,
+            "station_metadata": serialized_station_metadata,
             # backward compatibility for existing clients
             "data": {
                 "out": presented,
-                "decision_trace": trace if isinstance(trace, list) else [],
+                "decision_trace": trace_with_labels,
                 "explanations": explanations if isinstance(explanations, dict) else {},
                 "metrics": metrics if isinstance(metrics, dict) else {},
             },

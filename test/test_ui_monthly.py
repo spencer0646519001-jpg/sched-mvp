@@ -11,6 +11,8 @@ from django.http import JsonResponse
 from django.test import Client
 from django.test.utils import override_settings
 
+from app.infra.station_metadata import build_station_metadata_overlay
+
 
 def _django_setup():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
@@ -130,6 +132,18 @@ def test_ui_monthly_explain_js_has_error_fallback_message():
     body = response.content.decode("utf-8")
     assert 'const fallback = getT(currentLanguage, "explain_unavailable");' in body
     assert "explainOutput.innerHTML = '<p class=\"subtle\">' + fallback + detail + \"</p>\";" in body
+
+
+def test_ui_monthly_explain_js_uses_station_labels_from_api_payload():
+    _django_setup()
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.get("/ui/monthly")
+
+    assert response.status_code == 200
+    body = response.content.decode("utf-8")
+    assert "const stationLabels = payload.station_labels || {};" in body
+    assert "const station = formatStationLabel(item.station, item.station_label);" in body
 
 
 def test_ui_monthly_voice_input_scaffold_renders():
@@ -407,6 +421,42 @@ def test_ui_monthly_refine_preview_post_renders_diff_and_preview_grid():
     assert "refine_preview_json" in body
     assert "People Grid" in body
     assert "Showing a refine candidate only. Export CSV still uses the current working state until you Apply." in body
+
+
+def test_ui_monthly_refine_preview_renders_db_station_label_in_diff(monkeypatch):
+    _django_setup()
+    overlay = build_station_metadata_overlay(
+        base_station_codes=["gateau", "petit_four", "glaze_and_fruit", "mise_en_place"],
+        db_station_rows=[
+            {
+                "code": "gateau",
+                "display_name": "Gateau Counter",
+                "is_active": True,
+                "sort_order": 25,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "app.infra.monthly_scheduling_inputs.load_station_metadata_overlay",
+        lambda **kwargs: overlay,
+    )
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/ui/monthly",
+            data={
+                "year_month": "2026-02",
+                "language": "en",
+                "leave_requests": "{}",
+                "refine_text": "2/1 Gateau Counter to Kim",
+                "action": "refine_preview",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.content.decode("utf-8")
+    assert re.search(r"Gateau Counter\s*/\s*gateau", body)
 
 
 def test_ui_monthly_refine_action_i18n_switches_between_ja_zh_en():

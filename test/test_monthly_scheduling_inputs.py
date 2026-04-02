@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from app.infra import monthly_scheduling_inputs as monthly_inputs
+from app.infra.station_metadata import build_station_metadata_overlay
 
 
 @dataclass(frozen=True)
@@ -178,3 +179,51 @@ def test_load_monthly_roster_metadata_uses_db_active_names_but_keeps_json_role_f
         "Funatsu": "chef",
         "Masuda": "staff",
     }
+
+
+def test_build_monthly_scheduling_inputs_attaches_station_metadata_overlay_without_flipping_engine_order(monkeypatch):
+    sentinel_overlay = build_station_metadata_overlay(
+        base_station_codes=["petit_four", "gateau", "glaze_and_fruit"],
+        db_station_rows=[
+            {
+                "code": "gateau",
+                "display_name": "Gateau Counter",
+                "is_active": True,
+                "sort_order": 25,
+            }
+        ],
+    )
+    observed = {}
+    base_engine_inputs = FakeEngineInputs(
+        shifts_list=[],
+        rules={"stations": {"GATEAU": 2, "petit_four": 1, "glaze_and_fruit": 1}},
+        calendar={},
+        people=[],
+        station_order=["petit_four", "gateau"],
+    )
+
+    monkeypatch.setattr(monthly_inputs, "build_inputs_from_json", lambda: base_engine_inputs)
+    monkeypatch.setattr(monthly_inputs, "load_workers", lambda: {"people": []})
+    monkeypatch.setattr(monthly_inputs, "load_people", lambda _tenant_name: [])
+
+    def fake_load_station_metadata_overlay(*, tenant_name: str, base_station_codes: list[str]):
+        observed["tenant_name"] = tenant_name
+        observed["base_station_codes"] = list(base_station_codes)
+        return sentinel_overlay
+
+    monkeypatch.setattr(monthly_inputs, "load_station_metadata_overlay", fake_load_station_metadata_overlay)
+
+    result = monthly_inputs.build_monthly_scheduling_inputs(
+        start_date="2025-11-01",
+        language="ja",
+        leave_requests={},
+        leave_by_date={},
+        tenant_name="demo_kitchen",
+    )
+
+    assert observed == {
+        "tenant_name": "demo_kitchen",
+        "base_station_codes": ["petit_four", "gateau", "glaze_and_fruit"],
+    }
+    assert result.engine_inputs.station_order == ["petit_four", "gateau"]
+    assert result.station_metadata is sentinel_overlay

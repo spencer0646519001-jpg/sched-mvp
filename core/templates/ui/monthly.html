@@ -125,7 +125,15 @@
             {% for item in refine_data.diff %}
               <li>
                 <span class="who">{{ item.date }}</span>
-                <span>{{ item.person }} {% if item.station %}({{ item.station }}){% endif %}</span>
+                <span>
+                  {{ item.person }}
+                  {% if item.station %}
+                    (
+                    {{ item.station_label|default:item.station }}
+                    {% if item.station_label and item.station_label != item.station %} / {{ item.station }}{% endif %}
+                    )
+                  {% endif %}
+                </span>
                 <span class="meta">{{ item.from.code|default:"" }} -&gt; {{ item.to.code|default:"" }}</span>
               </li>
             {% endfor %}
@@ -613,9 +621,22 @@
         const data = payload.data || {};
         const trace = payload.trace || data.decision_trace || payload.decision_trace || [];
         const outExplanations = (((data.out || {}).explanations) || data.explanations || payload.explanations || {});
+        const stationLabels = payload.station_labels || {};
         const wrapper = document.createElement("div");
         const summaryText = String(payload.summary || "").trim();
         const explainText = String(payload.text || "").trim();
+
+        function formatStationLabel(station, explicitLabel) {
+          const code = String(station || "").trim();
+          const label = String(explicitLabel || stationLabels[code] || "").trim();
+          if (!label) {
+            return code || "station";
+          }
+          if (!code || label === code) {
+            return label;
+          }
+          return label + " (" + code + ")";
+        }
 
         if (summaryText) {
           const summary = document.createElement("p");
@@ -635,7 +656,7 @@
             const details = document.createElement("details");
             details.className = "trace-item";
             const summary = document.createElement("summary");
-            const station = item.station || "station";
+            const station = formatStationLabel(item.station, item.station_label);
             const picked = Array.isArray(item.picked) ? item.picked.join(", ") : "";
             summary.textContent = station + (picked ? " - " + picked : "");
             details.appendChild(summary);
@@ -654,7 +675,7 @@
             const details = document.createElement("details");
             details.className = "trace-item";
             const summary = document.createElement("summary");
-            summary.textContent = station;
+            summary.textContent = formatStationLabel(station, "");
             details.appendChild(summary);
 
             const note = document.createElement("pre");

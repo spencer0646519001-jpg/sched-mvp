@@ -3,8 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, is_dataclass, replace
 from typing import TYPE_CHECKING
 
+from app.domain.normalize import canonical_station
 from app.infra.db_loader import load_people
 from app.infra.engine_inputs import build_inputs_from_json
+from app.infra.station_metadata import StationMetadataOverlay, load_station_metadata_overlay
 from app.infra.json_loader import load_workers
 
 if TYPE_CHECKING:
@@ -20,6 +22,7 @@ class MonthlySchedulingInputs:
     engine_inputs: "EngineInputs"
     ordered_names: list[str]
     role_by_name: dict[str, str]
+    station_metadata: StationMetadataOverlay
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,30 @@ def _normalize_station_skill_codes(raw_codes: object) -> list[str]:
         normalized.append(code)
         seen.add(code)
     return normalized
+
+
+def _base_station_codes_from_engine_inputs(engine_inputs: object) -> list[str]:
+    ordered_codes: list[str] = []
+    seen: set[str] = set()
+
+    for raw_code in getattr(engine_inputs, "station_order", []) or []:
+        code = canonical_station(str(raw_code or ""))
+        if not code or code in seen:
+            continue
+        ordered_codes.append(code)
+        seen.add(code)
+
+    rules = getattr(engine_inputs, "rules", {}) or {}
+    station_need = rules.get("stations") if isinstance(rules, dict) else {}
+    if isinstance(station_need, dict):
+        for raw_code in station_need.keys():
+            code = canonical_station(str(raw_code or ""))
+            if not code or code in seen:
+                continue
+            ordered_codes.append(code)
+            seen.add(code)
+
+    return ordered_codes
 
 
 def _load_worker_ordering_from_json() -> tuple[list[str], dict[str, str]]:
@@ -195,6 +222,7 @@ def build_monthly_scheduling_inputs(
     - monthly roster metadata now prefers DB-backed active Employee records
     - monthly row ordering keeps JSON order where possible for compatibility
     - monthly station capability lookup now prefers DB-backed employee-station skills when present
+    - monthly station metadata is DB-backed only as a read overlay on existing engine station codes
     - request leave overrides are applied at the monthly API boundary
     """
 
@@ -203,6 +231,10 @@ def build_monthly_scheduling_inputs(
     db_station_skills_by_name = _build_db_station_skills_by_name(db_people or [])
     engine_inputs = build_inputs_from_json()
     engine_inputs = _overlay_engine_input_station_skills(engine_inputs, db_station_skills_by_name)
+    station_metadata = load_station_metadata_overlay(
+        tenant_name=tenant_name,
+        base_station_codes=_base_station_codes_from_engine_inputs(engine_inputs),
+    )
     return MonthlySchedulingInputs(
         start_date=start_date,
         language=language,
@@ -211,4 +243,5 @@ def build_monthly_scheduling_inputs(
         engine_inputs=engine_inputs,
         ordered_names=list(roster_metadata.ordered_names),
         role_by_name=dict(roster_metadata.role_by_name),
+        station_metadata=station_metadata,
     )

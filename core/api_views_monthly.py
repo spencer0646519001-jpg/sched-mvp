@@ -13,6 +13,7 @@ from django.views.decorators.http import require_http_methods
 
 from app import generate_day as gd
 from app.domain.normalize import canonical_shift, canonical_station
+from app.infra.station_metadata import serialize_station_metadata
 from app.generate_week import generate_week, summarize_week
 from app.infra.monthly_scheduling_inputs import build_monthly_scheduling_inputs
 from app.month_service import build_month
@@ -349,18 +350,53 @@ def _extract_station_tokens_from_note(note: str) -> list[str]:
     return [tok for tok in tokens if tok]
 
 
-def _known_refine_stations(people_grid: dict) -> set[str]:
+def _station_label(station: str, station_metadata) -> str:
+    code = canonical_station(str(station or ""))
+    if not code:
+        return ""
+    if station_metadata is not None:
+        label = (getattr(station_metadata, "labels", {}) or {}).get(code)
+        if label:
+            return str(label)
+    return code
+
+
+def _build_refine_station_lookup(station_codes: list[str], station_metadata) -> dict[str, str]:
+    station_lookup: dict[str, str] = {}
+    allowed_codes = {canonical_station(code) for code in station_codes if canonical_station(code)}
+
+    if station_metadata is not None:
+        overlay_lookup = getattr(station_metadata, "lookup", {}) or {}
+        for key, code in overlay_lookup.items():
+            canonical_code = canonical_station(code)
+            if key and canonical_code in allowed_codes:
+                station_lookup[key] = canonical_code
+
+    for station in station_codes:
+        code = canonical_station(station)
+        key = _normalize_station_lookup_key(code)
+        if code and key:
+            station_lookup[key] = code
+
+    return station_lookup
+
+
+def _known_refine_stations(people_grid: dict, *, station_metadata=None) -> set[str]:
     known: set[str] = set()
-    try:
-        rules = gd.load_json("rules.json") or {}
-        station_need = rules.get("stations") or {}
-        if isinstance(station_need, dict):
-            for raw_station in station_need.keys():
-                canon = canonical_station(str(raw_station or ""))
-                if canon:
-                    known.add(canon)
-    except Exception:
-        pass
+    overlay_codes = list(getattr(station_metadata, "ordered_codes", []) or [])
+    if overlay_codes:
+        known.update(overlay_codes)
+    else:
+        try:
+            rules = gd.load_json("rules.json") or {}
+            station_need = rules.get("stations") or {}
+            if isinstance(station_need, dict):
+                for raw_station in station_need.keys():
+                    canon = canonical_station(str(raw_station or ""))
+                    if canon:
+                        known.add(canon)
+        except Exception:
+            pass
 
     for row in people_grid.get("rows", []) or []:
         for cell in row.get("cells", []) or []:
@@ -463,6 +499,22 @@ def _normalize_refine_station(raw_station: str, station_lookup: dict[str, str]) 
     if key in station_lookup:
         return station_lookup[key]
     return None
+
+
+def _annotate_refine_diff_station_metadata(diff: list[dict], *, station_metadata) -> list[dict]:
+    if not isinstance(diff, list):
+        return []
+
+    annotated: list[dict] = []
+    for item in diff:
+        if not isinstance(item, dict):
+            continue
+        copied = dict(item)
+        station = copied.get("station")
+        if station:
+            copied["station_label"] = _station_label(str(station), station_metadata)
+        annotated.append(copied)
+    return annotated
 
 
 def _normalize_refine_shift(raw_shift: str, shift_codes: set[str]) -> str | None:
@@ -812,7 +864,13 @@ def _apply_refine_operations(base_people_grid: dict, operations: list[dict]) -> 
     return preview_people_grid, diffs, warnings
 
 
-def _parse_refine_text(refine_text: str, *, start_date: str, people_grid: dict) -> tuple[list[dict], list[str], list[dict]]:
+def _parse_refine_text(
+    refine_text: str,
+    *,
+    start_date: str,
+    people_grid: dict,
+    station_metadata=None,
+) -> tuple[list[dict], list[str], list[dict]]:
     text = str(refine_text or "").strip()
     if not text:
         return [], ["REFINE_TEXT_EMPTY"], []
@@ -830,9 +888,8 @@ def _parse_refine_text(refine_text: str, *, start_date: str, people_grid: dict) 
             continue
         person_lookup[_normalize_person_lookup_key(name)] = name
 
-    station_lookup: dict[str, str] = {}
-    for station in sorted(_known_refine_stations(people_grid)):
-        station_lookup[_normalize_station_lookup_key(station)] = station
+    known_stations = sorted(_known_refine_stations(people_grid, station_metadata=station_metadata))
+    station_lookup = _build_refine_station_lookup(known_stations, station_metadata)
     shift_codes = _known_refine_shift_codes(people_grid)
 
     lines = [line.strip() for line in re.split(r"[\r\n;]+", text) if line.strip()]
@@ -1016,7 +1073,7 @@ def _known_refine_people(people_grid: dict) -> list[str]:
     return ordered
 
 
-def _build_refine_lookup_context(*, start_date: str, people_grid: dict) -> dict:
+def _build_refine_lookup_context(*, start_date: str, people_grid: dict, station_metadata=None) -> dict:
     try:
         anchor = datetime.strptime(start_date, "%Y-%m-%d").date()
     except ValueError:
@@ -1030,9 +1087,8 @@ def _build_refine_lookup_context(*, start_date: str, people_grid: dict) -> dict:
             continue
         person_lookup[_normalize_person_lookup_key(name)] = name
 
-    station_lookup: dict[str, str] = {}
-    for station in sorted(_known_refine_stations(people_grid)):
-        station_lookup[_normalize_station_lookup_key(station)] = station
+    known_stations = sorted(_known_refine_stations(people_grid, station_metadata=station_metadata))
+    station_lookup = _build_refine_station_lookup(known_stations, station_metadata)
 
     return {
         "anchor": anchor,
@@ -1205,17 +1261,19 @@ def _parse_refine_text_with_llm_fallback(
     start_date: str,
     language: str,
     people_grid: dict,
+    station_metadata=None,
 ) -> tuple[list[dict], list[str], list[dict], dict]:
     warnings: list[str] = ["REFINE_LLM_FALLBACK_ATTEMPTED"]
     parse_errors: list[dict] = []
     explain: dict = {"parser": "llm_fallback_v1", "ops_count": 0, "fallback_used": True}
+    known_stations = sorted(_known_refine_stations(people_grid, station_metadata=station_metadata))
 
     llm_result = parse_refine_with_llm(
         refine_text=refine_text,
         year_month=year_month,
         language=language,
         known_people=_known_refine_people(people_grid),
-        known_stations=sorted(_known_refine_stations(people_grid)),
+        known_stations=known_stations,
         known_shift_codes=sorted(_known_refine_shift_codes(people_grid)),
     )
 
@@ -1233,7 +1291,11 @@ def _parse_refine_text_with_llm_fallback(
         warnings.append("REFINE_LLM_FALLBACK_FAILED")
         return [], warnings, parse_errors, explain
 
-    context = _build_refine_lookup_context(start_date=start_date, people_grid=people_grid)
+    context = _build_refine_lookup_context(
+        start_date=start_date,
+        people_grid=people_grid,
+        station_metadata=station_metadata,
+    )
     ops: list[dict] = []
     for command in commands:
         op, err = _llm_command_to_operation(line=refine_text, command=command, context=context, language=language)
@@ -1392,6 +1454,7 @@ def plan_to_people_grid(month_state, scheduling_inputs):
 
     people_grid, legend = _build_people_grid_and_legend(month_state, ordered_names, role_by_name, grid)
     weekly_rest_warnings = _build_weekly_rest_warnings_from_people_grid(people_grid)
+    station_metadata = serialize_station_metadata(getattr(scheduling_inputs, "station_metadata", None))
 
     return {
         "meta": {
@@ -1408,6 +1471,7 @@ def plan_to_people_grid(month_state, scheduling_inputs):
         "overtime": month_state.get("overtime", {}),
         "people_grid": people_grid,
         "legend": legend,
+        "station_metadata": station_metadata,
     }
 
 
@@ -1554,6 +1618,7 @@ def api_monthly_refine_mirror(request):
         refine_text,
         start_date=start_date,
         people_grid=preview.get("people_grid", {}),
+        station_metadata=getattr(scheduling_inputs, "station_metadata", None),
     )
     parser_name = "rule_based_v2"
     fallback_used = False
@@ -1565,6 +1630,7 @@ def api_monthly_refine_mirror(request):
             start_date=start_date,
             language=language,
             people_grid=preview.get("people_grid", {}),
+            station_metadata=getattr(scheduling_inputs, "station_metadata", None),
         )
         parse_warnings.extend(llm_warnings)
 
@@ -1611,6 +1677,10 @@ def api_monthly_refine_mirror(request):
         )
 
     preview_people_grid, diff, refine_warnings = _apply_refine_operations(preview.get("people_grid", {}), ops)
+    diff = _annotate_refine_diff_station_metadata(
+        diff,
+        station_metadata=getattr(scheduling_inputs, "station_metadata", None),
+    )
 
     warnings = list(preview.get("warnings", []) or [])
     warnings.extend(parse_warnings)
@@ -1626,6 +1696,7 @@ def api_monthly_refine_mirror(request):
             "parse_errors": localized_parse_errors,
             "weekly_rest_warnings": weekly_rest_warnings,
             "explain": {"parser": parser_name, "ops_count": len(ops), "fallback_used": fallback_used},
+            "station_metadata": preview.get("station_metadata", []),
         },
         json_dumps_params={"ensure_ascii": False},
         status=200,

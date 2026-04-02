@@ -6,6 +6,8 @@ import pytest
 from django.test import Client
 from django.test.utils import override_settings
 
+from app.infra.station_metadata import build_station_metadata_overlay
+
 
 def _django_setup():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
@@ -198,6 +200,55 @@ def test_monthly_refine_parses_station_add_with_alias():
         and item.get("date") == "2026-02-01"
         and item.get("station") == "mise_en_place"
         for item in (data.get("diff") or [])
+    )
+
+
+def test_monthly_refine_uses_db_station_display_name_for_lookup_and_diff_label(monkeypatch):
+    _django_setup()
+    overlay = build_station_metadata_overlay(
+        base_station_codes=["gateau", "petit_four", "glaze_and_fruit", "mise_en_place"],
+        db_station_rows=[
+            {
+                "code": "gateau",
+                "display_name": "Gateau Counter",
+                "is_active": True,
+                "sort_order": 25,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "app.infra.monthly_scheduling_inputs.load_station_metadata_overlay",
+        lambda **kwargs: overlay,
+    )
+
+    payload = {
+        "year_month": "2026-02",
+        "language": "en",
+        "leave_requests": {},
+        "refine_text": "2/1 Gateau Counter to Kim",
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/refine",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    data = json.loads(response.content.decode("utf-8"))
+    assert any(
+        item.get("action") == "replace_station_new"
+        and item.get("date") == "2026-02-01"
+        and item.get("person") == "Kim"
+        and item.get("station") == "gateau"
+        and item.get("station_label") == "Gateau Counter"
+        for item in (data.get("diff") or [])
+    )
+    assert any(
+        item.get("code") == "gateau" and item.get("display_name") == "Gateau Counter"
+        for item in (data.get("station_metadata") or [])
     )
 
 
