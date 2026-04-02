@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from app.infra import monthly_scheduling_inputs as monthly_inputs
+from app.infra.shift_metadata import build_shift_metadata_overlay
 from app.infra.station_metadata import build_station_metadata_overlay
 
 
@@ -227,3 +228,60 @@ def test_build_monthly_scheduling_inputs_attaches_station_metadata_overlay_witho
     }
     assert result.engine_inputs.station_order == ["petit_four", "gateau"]
     assert result.station_metadata is sentinel_overlay
+
+
+def test_build_monthly_scheduling_inputs_attaches_shift_metadata_overlay_without_flipping_engine_shift_truth(monkeypatch):
+    sentinel_overlay = build_shift_metadata_overlay(
+        base_shift_defs=[
+            {"code": "A", "start": "10:00", "end": "20:00", "break_minutes": 60, "paid_hours": 9.0},
+            {"code": "D", "start": "14:00", "end": "23:00", "break_minutes": 60, "paid_hours": 8.0},
+        ],
+        db_shift_rows=[
+            {
+                "code": "A",
+                "display_name": "Morning Prep",
+                "legend_label": "Morning Prep shift",
+                "paid_hours": 7.5,
+            }
+        ],
+    )
+    observed = {}
+    base_engine_inputs = FakeEngineInputs(
+        shifts_list=[
+            {"code": "A", "start": "10:00", "end": "20:00", "break_minutes": 60, "paid_hours": 9.0},
+            {"code": "D", "start": "14:00", "end": "23:00", "break_minutes": 60, "paid_hours": 8.0},
+        ],
+        rules={"stations": {"GATEAU": 2}},
+        calendar={},
+        people=[],
+        station_order=["gateau"],
+    )
+
+    monkeypatch.setattr(monthly_inputs, "build_inputs_from_json", lambda: base_engine_inputs)
+    monkeypatch.setattr(monthly_inputs, "load_workers", lambda: {"people": []})
+    monkeypatch.setattr(monthly_inputs, "load_people", lambda _tenant_name: [])
+    monkeypatch.setattr(
+        monthly_inputs,
+        "load_station_metadata_overlay",
+        lambda **kwargs: build_station_metadata_overlay(base_station_codes=["gateau"], db_station_rows=[]),
+    )
+
+    def fake_load_shift_metadata_overlay(*, tenant_name: str, base_shift_defs: list[dict]):
+        observed["tenant_name"] = tenant_name
+        observed["base_shift_defs"] = list(base_shift_defs)
+        return sentinel_overlay
+
+    monkeypatch.setattr(monthly_inputs, "load_shift_metadata_overlay", fake_load_shift_metadata_overlay)
+
+    result = monthly_inputs.build_monthly_scheduling_inputs(
+        start_date="2025-11-01",
+        language="ja",
+        leave_requests={},
+        leave_by_date={},
+        tenant_name="demo_kitchen",
+    )
+
+    assert observed["tenant_name"] == "demo_kitchen"
+    assert [item["code"] for item in observed["base_shift_defs"]] == ["A", "D"]
+    assert result.engine_inputs.shifts_list == base_engine_inputs.shifts_list
+    assert result.shift_metadata is sentinel_overlay

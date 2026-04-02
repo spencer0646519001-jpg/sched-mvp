@@ -175,6 +175,34 @@
       {% endif %}
     </section>
 
+    {% if refine_data and refine_data.shift_metadata %}
+      <section class="ui-card legend-card">
+        <h2 data-i18n="shift_legend">{{ t.shift_legend }}</h2>
+        <ul class="warning-list">
+          {% for item in refine_data.shift_metadata %}
+            <li>
+              <span class="who">{{ item.code }}</span>
+              <span>{{ item.display_name|default:item.code }}</span>
+              <span class="meta">{{ item.label|default:item.legend_label|default:item.code }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% elif preview_data and preview_data.shift_metadata %}
+      <section class="ui-card legend-card">
+        <h2 data-i18n="shift_legend">{{ t.shift_legend }}</h2>
+        <ul class="warning-list">
+          {% for item in preview_data.shift_metadata %}
+            <li>
+              <span class="who">{{ item.code }}</span>
+              <span>{{ item.display_name|default:item.code }}</span>
+              <span class="meta">{{ item.label|default:item.legend_label|default:item.code }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
     <section class="ui-card explain-card">
       <h2 data-i18n="explain_trace">{{ t.explain_trace }}</h2>
       {% if refine_data and refine_data.weekly_rest_warnings %}

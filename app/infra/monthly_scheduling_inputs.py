@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from app.domain.normalize import canonical_station
 from app.infra.db_loader import load_people
 from app.infra.engine_inputs import build_inputs_from_json
+from app.infra.shift_metadata import ShiftMetadataOverlay, load_shift_metadata_overlay
 from app.infra.station_metadata import StationMetadataOverlay, load_station_metadata_overlay
 from app.infra.json_loader import load_workers
 
@@ -23,6 +24,7 @@ class MonthlySchedulingInputs:
     ordered_names: list[str]
     role_by_name: dict[str, str]
     station_metadata: StationMetadataOverlay
+    shift_metadata: ShiftMetadataOverlay
 
 
 @dataclass(frozen=True)
@@ -223,6 +225,7 @@ def build_monthly_scheduling_inputs(
     - monthly row ordering keeps JSON order where possible for compatibility
     - monthly station capability lookup now prefers DB-backed employee-station skills when present
     - monthly station metadata is DB-backed only as a read overlay on existing engine station codes
+    - monthly shift metadata is DB-backed only as a read overlay on existing JSON-backed shift codes
     - request leave overrides are applied at the monthly API boundary
     """
 
@@ -235,6 +238,10 @@ def build_monthly_scheduling_inputs(
         tenant_name=tenant_name,
         base_station_codes=_base_station_codes_from_engine_inputs(engine_inputs),
     )
+    shift_metadata = load_shift_metadata_overlay(
+        tenant_name=tenant_name,
+        base_shift_defs=getattr(engine_inputs, "shifts_list", []) or [],
+    )
     return MonthlySchedulingInputs(
         start_date=start_date,
         language=language,
@@ -244,4 +251,5 @@ def build_monthly_scheduling_inputs(
         ordered_names=list(roster_metadata.ordered_names),
         role_by_name=dict(roster_metadata.role_by_name),
         station_metadata=station_metadata,
+        shift_metadata=shift_metadata,
     )

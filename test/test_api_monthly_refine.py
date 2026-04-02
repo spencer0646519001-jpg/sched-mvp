@@ -6,6 +6,7 @@ import pytest
 from django.test import Client
 from django.test.utils import override_settings
 
+from app.infra.shift_metadata import build_shift_metadata_overlay
 from app.infra.station_metadata import build_station_metadata_overlay
 
 
@@ -249,6 +250,55 @@ def test_monthly_refine_uses_db_station_display_name_for_lookup_and_diff_label(m
     assert any(
         item.get("code") == "gateau" and item.get("display_name") == "Gateau Counter"
         for item in (data.get("station_metadata") or [])
+    )
+
+
+def test_monthly_refine_accepts_db_shift_display_name_for_set_shift(monkeypatch):
+    _django_setup()
+    monkeypatch.setattr(
+        "app.infra.monthly_scheduling_inputs.load_shift_metadata_overlay",
+        lambda **kwargs: build_shift_metadata_overlay(
+            base_shift_defs=kwargs["base_shift_defs"],
+            db_shift_rows=[
+                {
+                    "code": "D",
+                    "display_name": "ClosingD",
+                    "legend_label": "Closing D shift",
+                    "paid_hours": 8.5,
+                }
+            ],
+        ),
+    )
+
+    payload = {
+        "year_month": "2026-02",
+        "language": "en",
+        "leave_requests": {},
+        "refine_text": "Spencer 2026-02-01 to ClosingD",
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/refine",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    data = json.loads(response.content.decode("utf-8"))
+    assert data.get("ok") is True
+    assert any(
+        item.get("date") == "2026-02-01"
+        and item.get("person") == "Spencer"
+        and (item.get("to") or {}).get("code") == "D"
+        for item in (data.get("diff") or [])
+    )
+    assert any(
+        item.get("code") == "D"
+        and item.get("display_name") == "ClosingD"
+        and item.get("label") == "Closing D shift"
+        for item in (data.get("shift_metadata") or [])
     )
 
 

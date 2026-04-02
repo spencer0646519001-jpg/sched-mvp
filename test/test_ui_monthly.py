@@ -11,6 +11,7 @@ from django.http import JsonResponse
 from django.test import Client
 from django.test.utils import override_settings
 
+from app.infra.shift_metadata import build_shift_metadata_overlay
 from app.infra.station_metadata import build_station_metadata_overlay
 
 
@@ -87,6 +88,41 @@ def test_ui_monthly_preview_post_renders_grid():
     assert "2025-11-05" in body
     assert re.search(r'<h2[^>]*data-i18n="people_grid"[^>]*>', body)
     assert re.search(r'<h2[^>]*data-i18n="weekly_rest_warnings"[^>]*>', body)
+
+
+def test_ui_monthly_preview_renders_db_backed_shift_legend(monkeypatch):
+    _django_setup()
+    monkeypatch.setattr(
+        "app.infra.monthly_scheduling_inputs.load_shift_metadata_overlay",
+        lambda **kwargs: build_shift_metadata_overlay(
+            base_shift_defs=kwargs["base_shift_defs"],
+            db_shift_rows=[
+                {
+                    "code": "A",
+                    "display_name": "Morning Prep",
+                    "legend_label": "Morning Prep shift",
+                    "paid_hours": 7.5,
+                }
+            ],
+        ),
+    )
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/ui/monthly",
+            data={
+                "year_month": "2025-11",
+                "language": "en",
+                "leave_requests": "{}",
+                "action": "preview",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.content.decode("utf-8")
+    assert "Shift Legend" in body
+    assert "Morning Prep shift" in body
 
 
 def test_ui_monthly_language_switch_label_on_post():

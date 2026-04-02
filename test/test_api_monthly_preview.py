@@ -1,9 +1,10 @@
 ﻿import json
 import os
 
+import django
+from app.infra.shift_metadata import build_shift_metadata_overlay
 from django.test import Client
 from django.test.utils import override_settings
-import django
 
 
 def _django_setup():
@@ -281,3 +282,48 @@ def test_monthly_preview_uses_db_backed_roster_rows_and_appends_runtime_assignme
         "Spencer": "staff",
         "Kim": "staff",
     }
+
+
+def test_monthly_preview_uses_db_backed_shift_metadata_for_legend(monkeypatch):
+    _django_setup()
+
+    monkeypatch.setattr(
+        "app.infra.monthly_scheduling_inputs.load_shift_metadata_overlay",
+        lambda **kwargs: build_shift_metadata_overlay(
+            base_shift_defs=kwargs["base_shift_defs"],
+            db_shift_rows=[
+                {
+                    "code": "A",
+                    "display_name": "Morning Prep",
+                    "legend_label": "Morning Prep shift",
+                    "paid_hours": 7.5,
+                }
+            ],
+        ),
+    )
+
+    payload = {
+        "year_month": "2025-11",
+        "language": "en",
+        "leave_requests": {},
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/preview",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    data = json.loads(response.content.decode("utf-8"))
+    assert data["legend"]["A"]["label"] == "Morning Prep shift"
+    assert data["legend"]["A"]["display_name"] == "Morning Prep"
+    assert data["legend"]["A"]["paid_hours"] == 7.5
+    assert any(
+        item.get("code") == "A"
+        and item.get("display_name") == "Morning Prep"
+        and item.get("label") == "Morning Prep shift"
+        for item in (data.get("shift_metadata") or [])
+    )

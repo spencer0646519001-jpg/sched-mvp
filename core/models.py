@@ -97,6 +97,32 @@ class EmployeeStationSkill(TimeStampedModel):
         ]
 
 
+class ShiftDefinition(TimeStampedModel):
+    """
+    Tenant-scoped shift metadata used by read surfaces only.
+
+    Engine assignment behavior still remains JSON-backed for now; this model is
+    intentionally limited to display metadata such as labels and paid hours.
+    """
+
+    tenant = models.ForeignKey(
+        Tenant, on_delete=models.CASCADE, related_name="shift_definitions"
+    )
+    code = models.CharField(max_length=16)
+    display_name = models.CharField(max_length=120, blank=True, default="")
+    legend_label = models.CharField(max_length=255, blank=True, default="")
+    paid_hours = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        unique_together = [("tenant", "code")]
+        indexes = [
+            models.Index(fields=["tenant", "code"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.tenant}:{self.code}"
+
+
 class ScheduleRun(TimeStampedModel):
     """
     一次「排班運算」的紀錄（可追溯、可比對、可回滾）

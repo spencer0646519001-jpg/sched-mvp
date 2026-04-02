@@ -13,6 +13,7 @@ from django.views.decorators.http import require_http_methods
 
 from app import generate_day as gd
 from app.domain.normalize import canonical_shift, canonical_station
+from app.infra.shift_metadata import serialize_shift_metadata
 from app.infra.station_metadata import serialize_station_metadata
 from app.generate_week import generate_week, summarize_week
 from app.infra.monthly_scheduling_inputs import build_monthly_scheduling_inputs
@@ -213,12 +214,40 @@ def _to_grid_role(role: str) -> str:
     return "unknown"
 
 
+def _normalize_shift_lookup_key(raw: str) -> str:
+    return re.sub(r"[\s_\-]+", "", str(raw or "")).strip().lower()
+
+
+def _monthly_shift_metadata_payload(shift_metadata) -> list[dict[str, object]]:
+    serialized = serialize_shift_metadata(shift_metadata)
+    if not serialized:
+        serialized = [dict(item) for item in load_shift_defs() if isinstance(item, dict)]
+
+    legend = build_shift_legend(serialized)
+    payload: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for item in serialized:
+        code = canonical_shift(item.get("code"))
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        copied = dict(item)
+        copied["code"] = code
+        copied["display_name"] = str(copied.get("display_name") or code).strip() or code
+        copied["legend_label"] = str(copied.get("legend_label") or "").strip()
+        copied["label"] = str((legend.get(code) or {}).get("label") or "")
+        payload.append(copied)
+    return payload
+
+
 def _build_people_grid_and_legend(
     month_state: dict,
     ordered_names: list[str],
     role_by_name: dict[str, str],
     grid: dict[str, dict[str, dict]],
-) -> tuple[dict, dict]:
+    *,
+    shift_metadata=None,
+) -> tuple[dict, dict, list[dict[str, object]]]:
     dates = _month_dates(month_state)
     year_month = (month_state.get("month_start") or "")[:7]
 
@@ -249,7 +278,8 @@ def _build_people_grid_and_legend(
             }
         )
 
-    legend = build_shift_legend(load_shift_defs())
+    shift_metadata_payload = _monthly_shift_metadata_payload(shift_metadata)
+    legend = build_shift_legend(shift_metadata_payload)
     for code in sorted(used_codes):
         if code not in legend:
             legend[code] = {"label": "Shift code"}
@@ -258,7 +288,7 @@ def _build_people_grid_and_legend(
         "year_month": year_month,
         "dates": dates,
         "rows": rows,
-    }, legend
+    }, legend, shift_metadata_payload
 
 
 
@@ -411,8 +441,31 @@ def _known_refine_stations(people_grid: dict, *, station_metadata=None) -> set[s
     return known
 
 
-def _known_refine_shift_codes(people_grid: dict) -> set[str]:
+def _build_refine_shift_lookup(shift_codes: set[str], shift_metadata) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    allowed_codes = {canonical_shift(code) for code in shift_codes if canonical_shift(code)}
+
+    if shift_metadata is not None:
+        overlay_lookup = getattr(shift_metadata, "lookup", {}) or {}
+        for key, code in overlay_lookup.items():
+            canonical_code = canonical_shift(code)
+            if key and canonical_code in allowed_codes:
+                lookup[key] = canonical_code
+
+    for code in sorted(allowed_codes):
+        key = _normalize_shift_lookup_key(code)
+        if key:
+            lookup[key] = code
+
+    return lookup
+
+
+def _known_refine_shift_codes(people_grid: dict, *, shift_metadata=None) -> set[str]:
     known: set[str] = {"OFF"}
+    overlay_codes = list(getattr(shift_metadata, "ordered_codes", []) or [])
+    if overlay_codes:
+        known.update(canonical_shift(code) for code in overlay_codes if canonical_shift(code))
+
     try:
         shifts = gd.load_json("shifts.json") or []
         for item in shifts:
@@ -517,7 +570,7 @@ def _annotate_refine_diff_station_metadata(diff: list[dict], *, station_metadata
     return annotated
 
 
-def _normalize_refine_shift(raw_shift: str, shift_codes: set[str]) -> str | None:
+def _normalize_refine_shift(raw_shift: str, shift_codes: set[str], *, shift_metadata=None) -> str | None:
     token = str(raw_shift or "").strip()
     if not token:
         return None
@@ -529,6 +582,11 @@ def _normalize_refine_shift(raw_shift: str, shift_codes: set[str]) -> str | None
     canon = canonical_shift(token)
     if canon in shift_codes:
         return canon
+
+    lookup = _build_refine_shift_lookup(shift_codes, shift_metadata)
+    key = _normalize_shift_lookup_key(token)
+    if key in lookup:
+        return lookup[key]
     return None
 
 
@@ -870,6 +928,7 @@ def _parse_refine_text(
     start_date: str,
     people_grid: dict,
     station_metadata=None,
+    shift_metadata=None,
 ) -> tuple[list[dict], list[str], list[dict]]:
     text = str(refine_text or "").strip()
     if not text:
@@ -890,7 +949,7 @@ def _parse_refine_text(
 
     known_stations = sorted(_known_refine_stations(people_grid, station_metadata=station_metadata))
     station_lookup = _build_refine_station_lookup(known_stations, station_metadata)
-    shift_codes = _known_refine_shift_codes(people_grid)
+    shift_codes = _known_refine_shift_codes(people_grid, shift_metadata=shift_metadata)
 
     lines = [line.strip() for line in re.split(r"[\r\n;]+", text) if line.strip()]
     ops: list[dict] = []
@@ -939,7 +998,7 @@ def _parse_refine_text(
                 continue
 
             target_raw = str(m.group("target") or "").strip().rstrip("。.,，")
-            shift_or_off = _normalize_refine_shift(target_raw, shift_codes)
+            shift_or_off = _normalize_refine_shift(target_raw, shift_codes, shift_metadata=shift_metadata)
             if not shift_or_off:
                 parse_errors.append(
                     _refine_parse_error(line, "shift_not_found", f"找不到班別: {target_raw}")
@@ -1073,7 +1132,7 @@ def _known_refine_people(people_grid: dict) -> list[str]:
     return ordered
 
 
-def _build_refine_lookup_context(*, start_date: str, people_grid: dict, station_metadata=None) -> dict:
+def _build_refine_lookup_context(*, start_date: str, people_grid: dict, station_metadata=None, shift_metadata=None) -> dict:
     try:
         anchor = datetime.strptime(start_date, "%Y-%m-%d").date()
     except ValueError:
@@ -1095,7 +1154,8 @@ def _build_refine_lookup_context(*, start_date: str, people_grid: dict, station_
         "valid_dates": valid_dates,
         "person_lookup": person_lookup,
         "station_lookup": station_lookup,
-        "shift_codes": _known_refine_shift_codes(people_grid),
+        "shift_codes": _known_refine_shift_codes(people_grid, shift_metadata=shift_metadata),
+        "shift_metadata": shift_metadata,
     }
 
 
@@ -1179,6 +1239,7 @@ def _llm_command_to_operation(
     person_lookup = context["person_lookup"]
     station_lookup = context["station_lookup"]
     shift_codes = context["shift_codes"]
+    shift_metadata = context.get("shift_metadata")
 
     raw_date = str(command.get("date") or "").strip()
     normalized_date = _normalize_refine_date(raw_date, anchor_year=anchor.year, anchor_month=anchor.month)
@@ -1199,7 +1260,11 @@ def _llm_command_to_operation(
                 "person_not_found",
                 _refine_error_message(language, "person_not_found"),
             )
-        shift = _normalize_refine_shift(str(command.get("shift") or ""), shift_codes)
+        shift = _normalize_refine_shift(
+            str(command.get("shift") or ""),
+            shift_codes,
+            shift_metadata=shift_metadata,
+        )
         if not shift:
             return None, _refine_parse_error(
                 line,
@@ -1262,6 +1327,7 @@ def _parse_refine_text_with_llm_fallback(
     language: str,
     people_grid: dict,
     station_metadata=None,
+    shift_metadata=None,
 ) -> tuple[list[dict], list[str], list[dict], dict]:
     warnings: list[str] = ["REFINE_LLM_FALLBACK_ATTEMPTED"]
     parse_errors: list[dict] = []
@@ -1274,7 +1340,7 @@ def _parse_refine_text_with_llm_fallback(
         language=language,
         known_people=_known_refine_people(people_grid),
         known_stations=known_stations,
-        known_shift_codes=sorted(_known_refine_shift_codes(people_grid)),
+        known_shift_codes=sorted(_known_refine_shift_codes(people_grid, shift_metadata=shift_metadata)),
     )
 
     if not isinstance(llm_result, dict) or not llm_result.get("ok"):
@@ -1295,6 +1361,7 @@ def _parse_refine_text_with_llm_fallback(
         start_date=start_date,
         people_grid=people_grid,
         station_metadata=station_metadata,
+        shift_metadata=shift_metadata,
     )
     ops: list[dict] = []
     for command in commands:
@@ -1452,7 +1519,13 @@ def plan_to_people_grid(month_state, scheduling_inputs):
             else:
                 grid[name][date_str] = {"code": "", "station": "", "notes": []}
 
-    people_grid, legend = _build_people_grid_and_legend(month_state, ordered_names, role_by_name, grid)
+    people_grid, legend, shift_metadata = _build_people_grid_and_legend(
+        month_state,
+        ordered_names,
+        role_by_name,
+        grid,
+        shift_metadata=getattr(scheduling_inputs, "shift_metadata", None),
+    )
     weekly_rest_warnings = _build_weekly_rest_warnings_from_people_grid(people_grid)
     station_metadata = serialize_station_metadata(getattr(scheduling_inputs, "station_metadata", None))
 
@@ -1471,6 +1544,7 @@ def plan_to_people_grid(month_state, scheduling_inputs):
         "overtime": month_state.get("overtime", {}),
         "people_grid": people_grid,
         "legend": legend,
+        "shift_metadata": shift_metadata,
         "station_metadata": station_metadata,
     }
 
@@ -1619,6 +1693,7 @@ def api_monthly_refine_mirror(request):
         start_date=start_date,
         people_grid=preview.get("people_grid", {}),
         station_metadata=getattr(scheduling_inputs, "station_metadata", None),
+        shift_metadata=getattr(scheduling_inputs, "shift_metadata", None),
     )
     parser_name = "rule_based_v2"
     fallback_used = False
@@ -1631,6 +1706,7 @@ def api_monthly_refine_mirror(request):
             language=language,
             people_grid=preview.get("people_grid", {}),
             station_metadata=getattr(scheduling_inputs, "station_metadata", None),
+            shift_metadata=getattr(scheduling_inputs, "shift_metadata", None),
         )
         parse_warnings.extend(llm_warnings)
 
@@ -1696,6 +1772,7 @@ def api_monthly_refine_mirror(request):
             "parse_errors": localized_parse_errors,
             "weekly_rest_warnings": weekly_rest_warnings,
             "explain": {"parser": parser_name, "ops_count": len(ops), "fallback_used": fallback_used},
+            "shift_metadata": preview.get("shift_metadata", []),
             "station_metadata": preview.get("station_metadata", []),
         },
         json_dumps_params={"ensure_ascii": False},
