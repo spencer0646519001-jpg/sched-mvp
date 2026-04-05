@@ -5,7 +5,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from app import generate_day as gd
-from app.domain.normalize import canonical_station
+from app.domain.normalize import canonical_shift, canonical_station
+from app.infra.engine_inputs import build_inputs_from_json
+from app.infra.shift_metadata import load_shift_metadata_overlay, serialize_shift_metadata
 from app.infra.station_metadata import load_station_metadata_overlay, serialize_station_metadata
 from app.month_service import run_daily_schedule
 from app.presenter import present_api_error, present_api_success, present_run_out
@@ -13,6 +15,7 @@ from app.run_service import build_out_from_run
 from core.api_view_helpers import _parse_request_payload, _validate_daily_run_payload
 from core.models import ScheduleRun
 from core.presenters.daily_run_presenter import present_create_daily_run_success
+from core.shift_defs import build_shift_legend
 
 
 def _ordered_station_codes_from_graph_output(out, trace, explanations) -> list[str]:
@@ -56,6 +59,134 @@ def _annotate_trace_station_labels(trace, station_labels: dict[str, str]) -> lis
         if station:
             copied["station_label"] = station_labels.get(station, station)
         annotated.append(copied)
+    return annotated
+
+
+def _load_daily_shift_metadata_overlay(tenant_name: str):
+    try:
+        base_shift_defs = getattr(build_inputs_from_json(), "shifts_list", []) or []
+    except Exception:
+        base_shift_defs = []
+    return load_shift_metadata_overlay(
+        tenant_name=tenant_name,
+        base_shift_defs=base_shift_defs,
+    )
+
+
+def _ordered_shift_codes_from_presented_out(presented_out: dict) -> list[str]:
+    ordered_codes: list[str] = []
+    seen: set[str] = set()
+
+    data = presented_out.get("data") if isinstance(presented_out, dict) else {}
+    assignments = data.get("assignments") if isinstance(data, dict) else []
+    if not isinstance(assignments, list):
+        return []
+
+    for item in assignments:
+        if not isinstance(item, dict):
+            continue
+        assignees = item.get("assignees") or []
+        if not isinstance(assignees, list):
+            continue
+        for assignee in assignees:
+            if not isinstance(assignee, dict):
+                continue
+            code = canonical_shift(str(assignee.get("shift") or ""))
+            if not code or code in seen:
+                continue
+            ordered_codes.append(code)
+            seen.add(code)
+
+    return ordered_codes
+
+
+def _daily_shift_metadata_payload(shift_metadata_overlay, *, shift_codes: list[str]) -> list[dict[str, object]]:
+    serialized = serialize_shift_metadata(shift_metadata_overlay, shift_codes=shift_codes)
+    if not serialized:
+        return []
+
+    legend = build_shift_legend(serialized)
+    payload: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for item in serialized:
+        code = canonical_shift(str(item.get("code") or ""))
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        copied = dict(item)
+        copied["code"] = code
+        copied["display_name"] = str(copied.get("display_name") or code).strip() or code
+        copied["legend_label"] = str(copied.get("legend_label") or "").strip()
+        copied["label"] = str((legend.get(code) or {}).get("label") or "")
+        payload.append(copied)
+    return payload
+
+
+def _annotate_trace_shift_metadata(
+    trace: list[dict],
+    *,
+    presented_out: dict,
+    shift_metadata_payload: list[dict[str, object]],
+) -> list[dict]:
+    if not isinstance(trace, list):
+        return []
+
+    shift_metadata_by_code: dict[str, dict[str, object]] = {}
+    for item in shift_metadata_payload:
+        if not isinstance(item, dict):
+            continue
+        code = canonical_shift(str(item.get("code") or ""))
+        if code:
+            shift_metadata_by_code[code] = dict(item)
+
+    assignments_by_station: dict[str, list[dict]] = {}
+    data = presented_out.get("data") if isinstance(presented_out, dict) else {}
+    assignments = data.get("assignments") if isinstance(data, dict) else []
+    if isinstance(assignments, list):
+        for item in assignments:
+            if not isinstance(item, dict):
+                continue
+            station = canonical_station(str(item.get("station") or ""))
+            assignees = item.get("assignees") or []
+            if station and isinstance(assignees, list):
+                assignments_by_station[station] = [assignee for assignee in assignees if isinstance(assignee, dict)]
+
+    annotated: list[dict] = []
+    for item in trace:
+        if not isinstance(item, dict):
+            continue
+
+        copied = dict(item)
+        station = canonical_station(str(copied.get("station") or ""))
+        assignees = assignments_by_station.get(station, [])
+
+        picked_details: list[dict[str, object]] = []
+        for assignee in assignees:
+            name = str(assignee.get("name") or "").strip()
+            shift = canonical_shift(str(assignee.get("shift") or ""))
+            metadata = shift_metadata_by_code.get(shift, {})
+
+            detail: dict[str, object] = {}
+            if name:
+                detail["name"] = name
+            if shift:
+                detail["shift"] = shift
+            if metadata.get("display_name"):
+                detail["shift_display_name"] = metadata["display_name"]
+            if metadata.get("legend_label"):
+                detail["shift_legend_label"] = metadata["legend_label"]
+            if metadata.get("label"):
+                detail["shift_label"] = metadata["label"]
+            if metadata.get("paid_hours") is not None:
+                detail["shift_paid_hours"] = metadata["paid_hours"]
+
+            if detail:
+                picked_details.append(detail)
+
+        if picked_details:
+            copied["picked_details"] = picked_details
+        annotated.append(copied)
+
     return annotated
 
 
@@ -210,8 +341,19 @@ def create_daily_run_graph(request, tenant_name: str):
         tenant_name=tenant_name,
         base_station_codes=station_codes,
     )
+    shift_metadata_overlay = _load_daily_shift_metadata_overlay(tenant_name)
+    shift_codes = _ordered_shift_codes_from_presented_out(presented)
+    serialized_shift_metadata = _daily_shift_metadata_payload(
+        shift_metadata_overlay,
+        shift_codes=shift_codes,
+    )
     station_labels = dict(getattr(station_metadata_overlay, "labels", {}) or {})
     trace_with_labels = _annotate_trace_station_labels(trace, station_labels)
+    trace_with_labels = _annotate_trace_shift_metadata(
+        trace_with_labels,
+        presented_out=presented,
+        shift_metadata_payload=serialized_shift_metadata,
+    )
     serialized_station_metadata = serialize_station_metadata(
         station_metadata_overlay,
         station_codes=station_codes,
@@ -252,12 +394,14 @@ def create_daily_run_graph(request, tenant_name: str):
             "explanations": explanations if isinstance(explanations, dict) else {},
             "station_labels": station_labels,
             "station_metadata": serialized_station_metadata,
+            "shift_metadata": serialized_shift_metadata,
             # backward compatibility for existing clients
             "data": {
                 "out": presented,
                 "decision_trace": trace_with_labels,
                 "explanations": explanations if isinstance(explanations, dict) else {},
                 "metrics": metrics if isinstance(metrics, dict) else {},
+                "shift_metadata": serialized_shift_metadata,
             },
             "meta": {"engine_version": "0.1"},
         },

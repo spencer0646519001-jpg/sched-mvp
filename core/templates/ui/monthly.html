@@ -666,6 +666,41 @@
           return label + " (" + code + ")";
         }
 
+        function formatPickedDetail(detail) {
+          if (!detail || typeof detail !== "object") {
+            return "";
+          }
+
+          const name = String(detail.name || "").trim();
+          const shift = String(detail.shift || "").trim();
+          let shiftLabel = String(
+            detail.shift_label || detail.shift_legend_label || detail.shift_display_name || ""
+          ).trim();
+
+          if (!shiftLabel) {
+            shiftLabel = shift;
+          } else if (shift && shiftLabel !== shift && !shiftLabel.includes("(" + shift + ")")) {
+            shiftLabel = shiftLabel + " (" + shift + ")";
+          }
+
+          if (name && shiftLabel) {
+            return name + " [" + shiftLabel + "]";
+          }
+          if (name) {
+            return name;
+          }
+          return shiftLabel;
+        }
+
+        function formatPickedSummary(item) {
+          const pickedDetails = Array.isArray(item.picked_details) ? item.picked_details : [];
+          const detailSummary = pickedDetails.map(formatPickedDetail).filter(Boolean);
+          if (detailSummary.length) {
+            return detailSummary.join(", ");
+          }
+          return Array.isArray(item.picked) ? item.picked.join(", ") : "";
+        }
+
         if (summaryText) {
           const summary = document.createElement("p");
           summary.className = "subtle";
@@ -685,8 +720,8 @@
             details.className = "trace-item";
             const summary = document.createElement("summary");
             const station = formatStationLabel(item.station, item.station_label);
-            const picked = Array.isArray(item.picked) ? item.picked.join(", ") : "";
-            summary.textContent = station + (picked ? " - " + picked : "");
+            const pickedSummary = formatPickedSummary(item);
+            summary.textContent = station + (pickedSummary ? " - " + pickedSummary : "");
             details.appendChild(summary);
 
             const pre = document.createElement("pre");

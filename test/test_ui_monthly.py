@@ -182,6 +182,20 @@ def test_ui_monthly_explain_js_uses_station_labels_from_api_payload():
     assert "const station = formatStationLabel(item.station, item.station_label);" in body
 
 
+def test_ui_monthly_explain_js_prefers_trace_shift_metadata_when_present():
+    _django_setup()
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.get("/ui/monthly")
+
+    assert response.status_code == 200
+    body = response.content.decode("utf-8")
+    assert "function formatPickedDetail(detail) {" in body
+    assert "const pickedDetails = Array.isArray(item.picked_details) ? item.picked_details : [];" in body
+    assert "const pickedSummary = formatPickedSummary(item);" in body
+    assert 'summary.textContent = station + (pickedSummary ? " - " + pickedSummary : "");' in body
+
+
 def test_ui_monthly_voice_input_scaffold_renders():
     _django_setup()
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
