@@ -20,6 +20,7 @@ It serves as a solid technical foundation for future AI-assisted scheduling syst
 - Current DB role: Django models/admin plus persisted daily run outputs; the monthly demo flow is still request-scoped preview/export, not DB-backed monthly plan persistence
 - Legacy/non-canonical runtime: `app/main.py` plus `app/api_*.py` FastAPI routes are rollback-only
 - Migration/parity surfaces: several Django `*_mirror` endpoints preserve older route shapes while Django is canonical
+- Determinism claim scope: the canonical daily scheduler core and the canonical Django monthly preview path are reproducible for identical inputs
 
 See `docs/architecture.md` for the short architecture walkthrough.
 
@@ -48,7 +49,7 @@ The goal is not to claim “optimal schedules”, but to clearly answer:
 - skill-aware
 - absence-aware
 - rule-driven (greedy engine)
-- deterministic and reproducible
+- deterministic and reproducible for the canonical daily scheduler path and canonical monthly preview path when called with the same inputs
 
 ### Explainable Decisions
 - step-by-step decision trace

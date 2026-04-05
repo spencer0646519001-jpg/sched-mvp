@@ -9,7 +9,7 @@ from pathlib import Path  # 路徑處理（跨平台安全）
 from datetime import datetime  # 日期處理
 from dateutil import parser as dtparser  # 解析字串日期
 import argparse  # 解析 CLI 參數
-import random
+import hashlib
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional  # 型別註解
 from app.week_utils import choose_shift_for_person
@@ -18,7 +18,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-week_state = None
 # 以檔案自身位置定位 data 目錄：<repo>/sched-mvp/data
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -98,8 +97,43 @@ def build_shift_maps(
     return shift_map, paid_hours
 
 
+def _ordered_allowed_shift_codes(
+    allowed: set[str],
+    shifts_map: Dict[str, dict],
+) -> List[str]:
+    ordered: List[str] = []
+    seen: set[str] = set()
+
+    for raw_code in shifts_map.keys():
+        code = str(raw_code).upper()
+        if code in allowed and code not in seen:
+            ordered.append(code)
+            seen.add(code)
+
+    for code in sorted(allowed):
+        if code not in seen:
+            ordered.append(code)
+
+    return ordered
+
+
+def _rotate_allowed_shift_codes(
+    allowed_list: List[str],
+    *,
+    date_str: str,
+    person_name: str,
+) -> List[str]:
+    if len(allowed_list) <= 1:
+        return list(allowed_list)
+
+    token = f"{date_str}|{person_name}".encode("utf-8")
+    digest = hashlib.sha256(token).digest()
+    offset = int.from_bytes(digest[:8], "big") % len(allowed_list)
+    return allowed_list[offset:] + allowed_list[:offset]
+
+
 def pick_shift_for(
-    person: dict, shifts_map: Dict[str, dict], is_holiday: bool
+    person: dict, shifts_map: Dict[str, dict], is_holiday: bool, date_str: str
 ) -> Optional[str]:
     """
     依照 shift_prefs 從「當天允許的班別」中挑一個。
@@ -136,8 +170,13 @@ def pick_shift_for(
 
     # 2) 沒有偏好落在 allowed → fallback 隨機選
     if allowed:
-        allowed_list = list(allowed)
-        return random.choice(allowed_list)
+        allowed_list = _ordered_allowed_shift_codes(allowed, shifts_map)
+        rotated_allowed_list = _rotate_allowed_shift_codes(
+            allowed_list,
+            date_str=date_str,
+            person_name=str(person.get("name") or ""),
+        )
+        return rotated_allowed_list[0]
 
     return None
 
@@ -152,7 +191,12 @@ def enforce_morning_requirements(assignments: dict, rules: dict):
     從該 station 的 assignment 中挑一個人換成早班。
     """
 
-    morning_shifts = set(rules.get("morning_shifts", []))
+    morning_shifts = [
+        str(code).upper()
+        for code in (rules.get("morning_shifts", []) or [])
+        if str(code).strip()
+    ]
+    morning_shift_set = set(morning_shifts)
     station_require = rules.get("stations_require_morning", {})
 
     for station, required_count in station_require.items():
@@ -161,20 +205,24 @@ def enforce_morning_requirements(assignments: dict, rules: dict):
             continue
 
         # 計算目前有多少早班
-        current_morning = [p for p in assigned_list if p["shift"] in morning_shifts]
+        current_morning = [
+            p for p in assigned_list if str(p.get("shift", "")).upper() in morning_shift_set
+        ]
         missing = required_count - len(current_morning)
 
         if missing <= 0:
             continue  # 早班已足夠
 
         # 不足 → 找出 非早班 的人
-        non_morning = [p for p in assigned_list if p["shift"] not in morning_shifts]
-        if not non_morning:
+        non_morning = [
+            p for p in assigned_list if str(p.get("shift", "")).upper() not in morning_shift_set
+        ]
+        if not non_morning or not morning_shifts:
             continue
 
         # 從 non-morning 裡挑第一個（未來可改成最少 penalty）
         target = non_morning[0]
-        target["shift"] = list(morning_shifts)[0]  # 指派第一個早班
+        target["shift"] = morning_shifts[0]  # 指派第一個早班
 
     return assignments
 
@@ -259,6 +307,7 @@ def greedy_assign_with_inputs(
     date_str: str,
     absent: List[str],
     inputs: EngineInputs,
+    weekly_context: Optional[dict] = None,
 ) -> dict:
     # 解析日期；去掉 timezone 以免比較問題
     day = dtparser.parse(date_str).replace(tzinfo=None)
@@ -367,7 +416,7 @@ def greedy_assign_with_inputs(
                 if p["name"] in used_today:
                     continue
 
-                shift_code = pick_shift_for(p, shifts_map, is_holi)
+                shift_code = pick_shift_for(p, shifts_map, is_holi, date_str)
                 if not shift_code or not eligible_today(
                     p, day, shift_code, rules, shifts_map
                 ):
@@ -376,8 +425,8 @@ def greedy_assign_with_inputs(
                 has_skill = s in set(p.get("station_skills") or [])
                 cost, extra = assignment_cost(p, s, shift_code, rules, day)
 
-                # === D 規則：週成本加權（由 generate_week 注入 week_state）===
-                ws = globals().get("week_state")
+                # === D 規則：週成本加權（由 generate_week 顯式傳入 weekly_context）===
+                ws = weekly_context
                 if ws is not None:
                     name = p["name"]
                     days_worked = ws["days_worked"][name]

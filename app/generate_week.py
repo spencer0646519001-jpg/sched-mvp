@@ -10,7 +10,7 @@ from datetime import timedelta
 from dateutil import parser as dtparser
 from typing import TYPE_CHECKING, Dict, List
 
-# Use generate_day utilities and shared module-level state for day planning.
+# Use generate_day utilities for day planning.
 from . import generate_day as gd
 from app.week_utils import pick_chefs_for_day, CHEF_LIST
 from app.infra.engine_inputs import build_inputs_from_json
@@ -133,10 +133,7 @@ def generate_week(
                 state["consecutive_days"][n] = prev_consec[n]
         # Keep days_worked / weekly_hours local to this generated chunk
 
-    # 3) Prepare generate_day globals consumed by assignment scoring
-    shifts_map, _ = gd.build_shift_maps(inputs.shifts_list)
-    gd.shifts_map = shifts_map
-    gd.week_state = state  # Used by greedy_assign for weekly penalty context
+    # 3) Weekly continuity is passed explicitly into the daily engine.
 
     # 4) Build target date list for this chunk
     start_date = dtparser.parse(start_date_str).date()
@@ -160,6 +157,7 @@ def generate_week(
             date_str,
             absent=absent_today,
             inputs=inputs,
+            weekly_context=state,
         )
 
         day_plan.setdefault("warnings", [])
