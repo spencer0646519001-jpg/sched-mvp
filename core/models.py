@@ -173,8 +173,8 @@ class Assignment(TimeStampedModel):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["tenant", "date", "station", "employee"],
-                name="uniq_assignment_per_employee_station_day",
+                fields=["schedule_run", "date", "station", "employee"],
+                name="uniq_assignment_per_run_employee_station_day",
             )
         ]
         indexes = [

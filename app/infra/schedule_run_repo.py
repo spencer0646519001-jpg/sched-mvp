@@ -54,13 +54,7 @@ def save_schedule_run_from_out(
         meta=meta,
     )
 
-    # 3) overwrite assignments for that day (tenant+date)
-    Assignment.objects.filter(
-        tenant=tenant,
-        date=day,
-    ).delete()
-
-    # 4) write new assignments
+    # 3) write assignments for this run only
     for station_code in station_order:
         items = normalized_assignments.get(station_code) or []
         station = Station.objects.get(tenant=tenant, code=station_code)
