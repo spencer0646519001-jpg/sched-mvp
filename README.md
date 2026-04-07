@@ -17,6 +17,7 @@ It serves as a solid technical foundation for future AI-assisted scheduling syst
 - Canonical backend runtime: Django (`manage.py`, `config.asgi`, `config.wsgi`)
 - Main monthly demo/review path: `GET /ui/monthly`
 - Current scheduling inputs: `data/workers.json`, `data/rules.json`, `data/shifts.json`, `data/calendar.json`
+- Current tenant support: canonical scheduling input resolution supports only `demo_kitchen`; other tenant names fail fast instead of reusing demo fixtures
 - Current DB role: Django models/admin plus persisted daily run outputs; the monthly demo flow is still request-scoped preview/export, not DB-backed monthly plan persistence
 - Legacy/non-canonical runtime: `app/main.py` plus `app/api_*.py` FastAPI routes are rollback-only
 - Migration/parity surfaces: several Django `*_mirror` endpoints preserve older route shapes while Django is canonical
@@ -59,6 +60,7 @@ The goal is not to claim “optimal schedules”, but to clearly answer:
 ### Data-Driven Configuration
 - no hard-coded stations or staff
 - current engine inputs are still loaded from `data/*.json`
+- canonical tenant-scoped scheduling currently supports only the `demo_kitchen` demo fixture tenant
 - Django Admin / SQLite currently back models and persisted run outputs
 
 ### Minimal Demo UI
@@ -233,7 +235,8 @@ Response includes:
 ### Current input reality
 
 - this endpoint is served by Django
-- the graph/explanation path still builds engine inputs from `data/*.json`
+- the graph/explanation path resolves engine inputs through the shared demo-only resolver and still builds those inputs from `data/*.json`
+- `demo_kitchen` is the only supported canonical scheduling tenant today; unsupported tenant names return a truthful error instead of silently using demo data
 - successful daily runs are then persisted to `ScheduleRun` / `Assignment`
 
 ## Project Structure (Simplified)

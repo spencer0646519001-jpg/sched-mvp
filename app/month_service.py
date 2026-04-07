@@ -3,7 +3,8 @@ from __future__ import annotations
 from app.domain.normalize import normalize_engine_assignments
 from typing import Any, Dict, List, Tuple, Optional
 from datetime import date, datetime, timedelta
-from app.generate_day import greedy_assign
+from app.generate_day import greedy_assign, greedy_assign_with_inputs
+from app.infra.engine_input_resolver import resolve_engine_inputs_for_tenant
 from app.infra.month_repo import build_station_map as build_station_map_repo
 
 from app.infra.schedule_run_repo import save_schedule_run_from_out as save_schedule_run_from_out_repo
@@ -139,8 +140,8 @@ def run_daily_schedule(
     absent: Optional[List[str]] = None,
     algorithm_version: str = "greedy_v1",
 ) -> ScheduleRun:
-    from app.generate_day import greedy_assign  # 避免 circular import
-    out = greedy_assign(date_str, absent=absent or [])
+    inputs = resolve_engine_inputs_for_tenant(tenant_name)
+    out = greedy_assign_with_inputs(date_str, absent=absent or [], inputs=inputs)
     run = save_schedule_run_from_out(
         tenant_name=tenant_name,
         out=out,

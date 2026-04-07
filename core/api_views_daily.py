@@ -6,7 +6,12 @@ from django.views.decorators.http import require_http_methods
 
 from app import generate_day as gd
 from app.domain.normalize import canonical_shift, canonical_station
-from app.infra.engine_inputs import build_inputs_from_json
+from app.infra.engine_input_resolver import (
+    UnsupportedEngineInputTenant,
+    require_supported_engine_input_tenant,
+    resolve_engine_inputs_for_tenant,
+    supported_engine_input_tenants,
+)
 from app.infra.shift_metadata import load_shift_metadata_overlay, serialize_shift_metadata
 from app.infra.station_metadata import load_station_metadata_overlay, serialize_station_metadata
 from app.month_service import run_daily_schedule
@@ -16,6 +21,20 @@ from core.api_view_helpers import _parse_request_payload, _validate_daily_run_pa
 from core.models import ScheduleRun
 from core.presenters.daily_run_presenter import present_create_daily_run_success
 from core.shift_defs import build_shift_legend
+
+
+def _unsupported_tenant_response(exc: UnsupportedEngineInputTenant) -> JsonResponse:
+    return JsonResponse(
+        {
+            "ok": False,
+            "code": "unsupported_tenant",
+            "detail": str(exc),
+            "tenant_name": exc.tenant_name,
+            "supported_tenants": supported_engine_input_tenants(),
+        },
+        json_dumps_params={"ensure_ascii": False},
+        status=400,
+    )
 
 
 def _ordered_station_codes_from_graph_output(out, trace, explanations) -> list[str]:
@@ -64,7 +83,13 @@ def _annotate_trace_station_labels(trace, station_labels: dict[str, str]) -> lis
 
 def _load_daily_shift_metadata_overlay(tenant_name: str):
     try:
-        base_shift_defs = getattr(build_inputs_from_json(), "shifts_list", []) or []
+        base_shift_defs = getattr(
+            resolve_engine_inputs_for_tenant(tenant_name),
+            "shifts_list",
+            [],
+        ) or []
+    except UnsupportedEngineInputTenant:
+        raise
     except Exception:
         base_shift_defs = []
     return load_shift_metadata_overlay(
@@ -222,7 +247,10 @@ def create_daily_run(request, tenant_name: str):
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
 
     # 3) run engine + save DB
-    run = run_daily_schedule(tenant_name, date_str, absent=absent)
+    try:
+        run = run_daily_schedule(tenant_name, date_str, absent=absent)
+    except UnsupportedEngineInputTenant as exc:
+        return _unsupported_tenant_response(exc)
 
     # 4) build out (raw)
     out = build_out_from_run(run)
@@ -292,6 +320,11 @@ def create_daily_run_graph(request, tenant_name: str):
         language = "en"
 
     try:
+        require_supported_engine_input_tenant(tenant_name)
+    except UnsupportedEngineInputTenant as exc:
+        return _unsupported_tenant_response(exc)
+
+    try:
         from app.langgraph_flow import run_daily_schedule_graph
     except ModuleNotFoundError as e:
         if "langgraph" in str(e):
@@ -312,6 +345,8 @@ def create_daily_run_graph(request, tenant_name: str):
             absent=absent,
             language=language,
         )
+    except UnsupportedEngineInputTenant as exc:
+        return _unsupported_tenant_response(exc)
     except Exception as exc:
         return JsonResponse(
             {"ok": False, "detail": str(exc)},

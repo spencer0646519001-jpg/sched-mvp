@@ -33,7 +33,9 @@ Current flow:
 
 - The shared scheduling engine still reads its working inputs from `data/*.json`.
 - In practice that means `workers.json`, `rules.json`, `shifts.json`, and `calendar.json` still drive the daily, graph, weekly, and monthly scheduling paths.
-- This happens through `app/infra/engine_inputs.py` and direct `load_json(...)` calls in the engine and UI helpers.
+- Canonical daily, graph, and monthly demo scheduling paths now resolve those inputs through `app/infra/engine_input_resolver.py`.
+- The resolver is intentionally honest: `demo_kitchen` is the only supported canonical scheduling tenant today, and unsupported tenant names fail instead of silently reusing demo fixtures.
+- Raw JSON loading still lives in `app/infra/engine_inputs.py`, with some direct `load_json(...)` calls remaining in legacy/parity helpers and non-scheduling UI lookup helpers.
 - Leave requests in the monthly demo are request-scoped input layered on top of those JSON fixtures.
 - Natural-language monthly refine also operates on the request-scoped preview; it is not a persisted monthly planning workflow yet.
 

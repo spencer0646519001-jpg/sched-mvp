@@ -7,7 +7,7 @@ from langgraph.graph import StateGraph, END
 
 # 你的引擎（不改它）
 from app.generate_day import EngineInputs, greedy_assign_with_inputs
-from app.infra.engine_inputs import build_inputs_from_json
+from app.infra.engine_input_resolver import resolve_engine_inputs_for_tenant
 
 
 class GraphState(TypedDict, total=False):
@@ -39,7 +39,7 @@ def _load_station_need_normalized(rules: Dict[str, Any]) -> Dict[str, int]:
 
 
 def node_load_context(state: GraphState) -> GraphState:
-    inputs = build_inputs_from_json()
+    inputs = resolve_engine_inputs_for_tenant(state["tenant_name"])
     station_need = _load_station_need_normalized(inputs.rules)
 
     base_order = [str(code).strip().lower() for code in (inputs.station_order or [])]
@@ -74,7 +74,9 @@ def node_load_context(state: GraphState) -> GraphState:
 def node_run_greedy(state: GraphState) -> GraphState:
     date_str = state["date_str"]
     absent = state.get("absent") or []
-    inputs = state.get("engine_inputs") or build_inputs_from_json()
+    inputs = state.get("engine_inputs") or resolve_engine_inputs_for_tenant(
+        state["tenant_name"]
+    )
 
     out = greedy_assign_with_inputs(date_str, absent=absent, inputs=inputs)
     return {"greedy_result": out}

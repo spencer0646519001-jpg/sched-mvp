@@ -5,7 +5,10 @@ from typing import TYPE_CHECKING
 
 from app.domain.normalize import canonical_station
 from app.infra.db_loader import load_people
-from app.infra.engine_inputs import build_inputs_from_json
+from app.infra.engine_input_resolver import (
+    DEMO_TENANT_NAME,
+    resolve_engine_inputs_for_tenant,
+)
 from app.infra.shift_metadata import ShiftMetadataOverlay, load_shift_metadata_overlay
 from app.infra.station_metadata import StationMetadataOverlay, load_station_metadata_overlay
 from app.infra.json_loader import load_workers
@@ -33,7 +36,7 @@ class MonthlyRosterMetadata:
     role_by_name: dict[str, str]
 
 
-MONTHLY_DEMO_TENANT_NAME = "demo_kitchen"
+MONTHLY_DEMO_TENANT_NAME = DEMO_TENANT_NAME
 
 
 def _normalize_station_skill_codes(raw_codes: object) -> list[str]:
@@ -220,7 +223,8 @@ def build_monthly_scheduling_inputs(
     Assemble the canonical request-scoped inputs for the monthly demo flow.
 
     Current architecture truth:
-    - scheduling engine inputs are still JSON-backed
+    - scheduling engine inputs are resolved through the demo-only tenant resolver
+      and are still JSON-backed
     - monthly roster metadata now prefers DB-backed active Employee records
     - monthly row ordering keeps JSON order where possible for compatibility
     - monthly station capability lookup now prefers DB-backed employee-station skills when present
@@ -232,7 +236,7 @@ def build_monthly_scheduling_inputs(
     db_people = _load_db_people(tenant_name)
     roster_metadata = _load_monthly_roster_metadata_from_sources(db_people)
     db_station_skills_by_name = _build_db_station_skills_by_name(db_people or [])
-    engine_inputs = build_inputs_from_json()
+    engine_inputs = resolve_engine_inputs_for_tenant(tenant_name)
     engine_inputs = _overlay_engine_input_station_skills(engine_inputs, db_station_skills_by_name)
     station_metadata = load_station_metadata_overlay(
         tenant_name=tenant_name,

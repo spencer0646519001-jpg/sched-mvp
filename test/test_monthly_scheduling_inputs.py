@@ -18,7 +18,11 @@ def test_build_monthly_scheduling_inputs_prefers_db_roles_for_monthly_roster(mon
     sentinel_engine_inputs = object()
     observed = {}
 
-    monkeypatch.setattr(monthly_inputs, "build_inputs_from_json", lambda: sentinel_engine_inputs)
+    monkeypatch.setattr(
+        monthly_inputs,
+        "resolve_engine_inputs_for_tenant",
+        lambda _tenant_name: sentinel_engine_inputs,
+    )
     monkeypatch.setattr(
         monthly_inputs,
         "load_workers",
@@ -59,7 +63,11 @@ def test_build_monthly_scheduling_inputs_prefers_db_roles_for_monthly_roster(mon
 
 
 def test_build_monthly_scheduling_inputs_falls_back_to_json_roles_when_db_unavailable(monkeypatch):
-    monkeypatch.setattr(monthly_inputs, "build_inputs_from_json", lambda: object())
+    monkeypatch.setattr(
+        monthly_inputs,
+        "resolve_engine_inputs_for_tenant",
+        lambda _tenant_name: object(),
+    )
     monkeypatch.setattr(
         monthly_inputs,
         "load_workers",
@@ -104,7 +112,11 @@ def test_build_monthly_scheduling_inputs_overlays_db_station_skills_with_per_per
         station_order=["gateau", "petit_four"],
     )
 
-    monkeypatch.setattr(monthly_inputs, "build_inputs_from_json", lambda: base_engine_inputs)
+    monkeypatch.setattr(
+        monthly_inputs,
+        "resolve_engine_inputs_for_tenant",
+        lambda _tenant_name: base_engine_inputs,
+    )
     monkeypatch.setattr(
         monthly_inputs,
         "load_workers",
@@ -203,7 +215,11 @@ def test_build_monthly_scheduling_inputs_attaches_station_metadata_overlay_witho
         station_order=["petit_four", "gateau"],
     )
 
-    monkeypatch.setattr(monthly_inputs, "build_inputs_from_json", lambda: base_engine_inputs)
+    monkeypatch.setattr(
+        monthly_inputs,
+        "resolve_engine_inputs_for_tenant",
+        lambda _tenant_name: base_engine_inputs,
+    )
     monkeypatch.setattr(monthly_inputs, "load_workers", lambda: {"people": []})
     monkeypatch.setattr(monthly_inputs, "load_people", lambda _tenant_name: [])
 
@@ -257,7 +273,11 @@ def test_build_monthly_scheduling_inputs_attaches_shift_metadata_overlay_without
         station_order=["gateau"],
     )
 
-    monkeypatch.setattr(monthly_inputs, "build_inputs_from_json", lambda: base_engine_inputs)
+    monkeypatch.setattr(
+        monthly_inputs,
+        "resolve_engine_inputs_for_tenant",
+        lambda _tenant_name: base_engine_inputs,
+    )
     monkeypatch.setattr(monthly_inputs, "load_workers", lambda: {"people": []})
     monkeypatch.setattr(monthly_inputs, "load_people", lambda _tenant_name: [])
     monkeypatch.setattr(
