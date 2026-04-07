@@ -156,7 +156,7 @@ def _apply_trace_item_metrics(
     has_fallback: bool,
     missing_but_absent: List[str],
     missing_and_not_absent: List[str],
-) -> None:
+) -> Dict[str, int]:
     updated = dict(metrics)
     updated["stations_total"] += 1
 
@@ -312,7 +312,7 @@ def node_explain(state: GraphState) -> GraphState:
             continue
 
         # ====== metrics（B1-2）======
-        _apply_trace_item_metrics(
+        metrics = _apply_trace_item_metrics(
             metrics,
             picked=picked,
             picked_has_skill=picked_has_skill,

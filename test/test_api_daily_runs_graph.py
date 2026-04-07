@@ -286,3 +286,33 @@ def test_daily_runs_graph_adds_db_shift_metadata_to_trace_and_payload(monkeypatc
     assert body["data"]["decision_trace"][0]["picked_details"] == trace_item["picked_details"]
     assert body["data"]["shift_metadata"] == body["shift_metadata"]
     assert body["data"]["out"]["data"]["assignments"][0]["assignees"][0]["shift"] == "A"
+
+
+def test_daily_runs_graph_real_graph_populates_trace_derived_metrics():
+    _django_setup()
+
+    payload = {"date": "2026-01-06", "absent": ["Kim"], "language": "en"}
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/tenants/demo_kitchen/daily-runs-graph/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    body = json.loads(response.content.decode("utf-8"))
+    trace = body["trace"]
+    metrics = body["metrics"]
+    fallback_station_count = sum(1 for item in trace if item.get("has_fallback"))
+
+    assert body["ok"] is True
+    assert body["date"] == "2026-01-06"
+    assert isinstance(trace, list) and trace
+    assert body["data"]["decision_trace"] == trace
+    assert body["data"]["metrics"] == metrics
+    assert metrics["stations_total"] == len(trace)
+    assert metrics["fallback_stations"] == fallback_station_count
+    assert "explanations" in body
+    assert "station_metadata" in body
+    assert "shift_metadata" in body
