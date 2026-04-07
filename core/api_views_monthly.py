@@ -18,6 +18,7 @@ from app.infra.station_metadata import serialize_station_metadata
 from app.generate_week import generate_week, summarize_week
 from app.infra.monthly_scheduling_inputs import build_monthly_scheduling_inputs
 from app.month_service import build_month
+from core import monthly_workspace_service
 from core.api_view_helpers import _parse_request_payload
 from core.refine_llm import parse_refine_with_llm
 from core.shift_defs import (
@@ -1379,15 +1380,19 @@ def _parse_refine_text_with_llm_fallback(
     explain["ops_count"] = len(ops)
     return ops, warnings, parse_errors, explain
 
+def _monthly_preview_hooks() -> monthly_workspace_service.MonthlyPreviewHooks:
+    return monthly_workspace_service.MonthlyPreviewHooks(
+        generate_month_state_with_leave_requests=_generate_month_state_with_leave_requests,
+        plan_to_people_grid=plan_to_people_grid,
+    )
+
+
 def _build_monthly_preview(scheduling_inputs) -> dict:
     """Build the canonical monthly preview from one centralized input contract."""
-    month_state = _generate_month_state_with_leave_requests(
-        scheduling_inputs.start_date,
-        scheduling_inputs.leave_by_date,
-        engine_inputs=scheduling_inputs.engine_inputs,
+    return monthly_workspace_service.build_monthly_preview(
+        scheduling_inputs,
+        hooks=_monthly_preview_hooks(),
     )
-    month_state["language"] = scheduling_inputs.language
-    return plan_to_people_grid(month_state, scheduling_inputs)
 
 
 def _is_valid_monthly_people_grid(people_grid) -> bool:
@@ -1428,18 +1433,28 @@ def _is_valid_monthly_people_grid(people_grid) -> bool:
     return True
 
 
-def _resolve_monthly_export_people_grid(payload: dict, scheduling_inputs) -> dict:
-    # The monthly demo UI can carry a newer request-scoped working grid after
-    # refine/apply. Export should consume that same effective state when present,
-    # while still falling back to rebuilding the baseline preview for older callers.
-    working_people_grid = payload.get("working_people_grid")
-    if working_people_grid is not None:
-        if not _is_valid_monthly_people_grid(working_people_grid):
-            raise ValueError("Invalid 'working_people_grid' payload.")
-        return working_people_grid
+def _monthly_workspace_hooks() -> monthly_workspace_service.MonthlyWorkspaceHooks:
+    return monthly_workspace_service.MonthlyWorkspaceHooks(
+        build_monthly_preview=_build_monthly_preview,
+        is_valid_monthly_people_grid=_is_valid_monthly_people_grid,
+        parse_refine_text=_parse_refine_text,
+        parse_refine_text_with_llm_fallback=_parse_refine_text_with_llm_fallback,
+        localize_parse_errors=_localize_parse_errors,
+        build_refine_detail=_build_refine_detail,
+        refine_parse_error=_refine_parse_error,
+        refine_error_message=_refine_error_message,
+        apply_refine_operations=_apply_refine_operations,
+        annotate_refine_diff_station_metadata=_annotate_refine_diff_station_metadata,
+        build_weekly_rest_warnings_from_people_grid=_build_weekly_rest_warnings_from_people_grid,
+    )
 
-    preview = _build_monthly_preview(scheduling_inputs)
-    return preview.get("people_grid", {})
+
+def _resolve_monthly_export_people_grid(payload: dict, scheduling_inputs) -> dict:
+    return monthly_workspace_service.resolve_monthly_export_people_grid(
+        payload,
+        scheduling_inputs,
+        hooks=_monthly_workspace_hooks(),
+    )
 
 
 def plan_to_people_grid(month_state, scheduling_inputs):
@@ -1573,7 +1588,10 @@ def api_monthly_preview_mirror(request):
     )
 
     try:
-        result = _build_monthly_preview(scheduling_inputs)
+        result = monthly_workspace_service.build_monthly_preview_payload(
+            scheduling_inputs,
+            hooks=_monthly_workspace_hooks(),
+        )
     except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
         return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
 
@@ -1603,26 +1621,17 @@ def api_monthly_export_csv(request):
     )
 
     try:
-        people_grid = _resolve_monthly_export_people_grid(payload, scheduling_inputs)
+        csv_body = monthly_workspace_service.build_monthly_export_csv(
+            payload,
+            scheduling_inputs,
+            hooks=_monthly_workspace_hooks(),
+        )
     except ValueError as exc:
         return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=400)
     except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
         return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
 
-    dates = people_grid.get("dates", [])
-    rows = people_grid.get("rows", [])
-
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(["name", "role", *dates])
-    for row in rows:
-        cells = row.get("cells", [])
-        writer.writerow(
-            [row.get("name", ""), row.get("role", "")]
-            + [((cell or {}).get("code", "")) for cell in cells]
-        )
-
-    response = HttpResponse(buf.getvalue(), content_type="text/csv; charset=utf-8")
+    response = HttpResponse(csv_body, content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="monthly_{validated_year_month}.csv"'
     return response
 
@@ -1681,102 +1690,22 @@ def api_monthly_refine_mirror(request):
         leave_by_date=leave_by_date,
     )
 
-    # Current monthly demo path: build a request-scoped preview from JSON-backed
-    # engine inputs plus request leave overrides. No monthly plan is persisted here.
     try:
-        preview = _build_monthly_preview(scheduling_inputs)
-    except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
-        return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
-
-    ops, parse_warnings, parse_errors = _parse_refine_text(
-        refine_text,
-        start_date=start_date,
-        people_grid=preview.get("people_grid", {}),
-        station_metadata=getattr(scheduling_inputs, "station_metadata", None),
-        shift_metadata=getattr(scheduling_inputs, "shift_metadata", None),
-    )
-    parser_name = "rule_based_v2"
-    fallback_used = False
-
-    if parse_errors and not ops:
-        llm_ops, llm_warnings, llm_parse_errors, llm_explain = _parse_refine_text_with_llm_fallback(
-            refine_text=refine_text,
+        result = monthly_workspace_service.refine_monthly_workspace(
+            scheduling_inputs=scheduling_inputs,
             year_month=year_month,
             start_date=start_date,
             language=language,
-            people_grid=preview.get("people_grid", {}),
-            station_metadata=getattr(scheduling_inputs, "station_metadata", None),
-            shift_metadata=getattr(scheduling_inputs, "shift_metadata", None),
+            refine_text=refine_text,
+            hooks=_monthly_workspace_hooks(),
         )
-        parse_warnings.extend(llm_warnings)
-
-        if llm_ops and not llm_parse_errors:
-            ops = llm_ops
-            parse_errors = []
-            parser_name = str(llm_explain.get("parser") or "llm_fallback_v1")
-            fallback_used = True
-        else:
-            all_parse_errors = list(parse_errors) + list(llm_parse_errors)
-            localized_errors = _localize_parse_errors(all_parse_errors, language)
-            detail = _build_refine_detail(localized_errors, language=language)
-            if not localized_errors:
-                localized_errors = [
-                    _refine_parse_error(
-                        refine_text,
-                        "llm_unknown",
-                        _refine_error_message(language, "llm_unknown"),
-                    )
-                ]
-                detail = _build_refine_detail(localized_errors, language=language)
-            return JsonResponse(
-                {
-                    "ok": False,
-                    "detail": detail,
-                    "parse_errors": localized_errors,
-                },
-                json_dumps_params={"ensure_ascii": False},
-                status=400,
-            )
-
-    localized_parse_errors = _localize_parse_errors(parse_errors, language)
-
-    if parse_errors and not ops:
-        detail = _build_refine_detail(localized_parse_errors, language=language)
-        return JsonResponse(
-            {
-                "ok": False,
-                "detail": detail,
-                "parse_errors": localized_parse_errors,
-            },
-            json_dumps_params={"ensure_ascii": False},
-            status=400,
-        )
-
-    preview_people_grid, diff, refine_warnings = _apply_refine_operations(preview.get("people_grid", {}), ops)
-    diff = _annotate_refine_diff_station_metadata(
-        diff,
-        station_metadata=getattr(scheduling_inputs, "station_metadata", None),
-    )
-
-    warnings = list(preview.get("warnings", []) or [])
-    warnings.extend(parse_warnings)
-    warnings.extend(refine_warnings)
-    weekly_rest_warnings = _build_weekly_rest_warnings_from_people_grid(preview_people_grid)
+    except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
+        return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
 
     return JsonResponse(
-        {
-            "ok": True,
-            "diff": diff,
-            "preview_people_grid": preview_people_grid,
-            "warnings": warnings,
-            "parse_errors": localized_parse_errors,
-            "weekly_rest_warnings": weekly_rest_warnings,
-            "explain": {"parser": parser_name, "ops_count": len(ops), "fallback_used": fallback_used},
-            "shift_metadata": preview.get("shift_metadata", []),
-            "station_metadata": preview.get("station_metadata", []),
-        },
+        result.payload,
         json_dumps_params={"ensure_ascii": False},
-        status=200,
+        status=result.status_code,
     )
 
 @require_http_methods(["GET"])
