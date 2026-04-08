@@ -1,3 +1,12 @@
+"""Monthly demo scheduling input assembly.
+
+This module keeps the current architecture truth explicit:
+- the demo scheduler's engine inputs remain JSON-canonical
+- monthly demo assembly layers DB-backed read overlays on top of those JSON
+  engine inputs where useful
+- leave/refine state remains request-scoped and is not monthly plan persistence
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, is_dataclass, replace
@@ -76,6 +85,8 @@ def _base_station_codes_from_engine_inputs(engine_inputs: object) -> list[str]:
 
 
 def _load_worker_ordering_from_json() -> tuple[list[str], dict[str, str]]:
+    """Load the baseline monthly roster ordering from the demo JSON inputs."""
+
     workers = load_workers().get("people", [])
     role_by_name = {
         person.get("name"): person.get("role", "")
@@ -91,7 +102,8 @@ def _load_worker_ordering_from_json() -> tuple[list[str], dict[str, str]]:
 
 
 def _load_db_people(tenant_name: str) -> list[dict] | None:
-    # Keep the monthly demo read path compatible while only a subset is DB-backed.
+    # Keep the monthly demo read path compatible while selected monthly surfaces
+    # can overlay DB-backed admin data on top of JSON-canonical engine inputs.
     try:
         return load_people(tenant_name)
     except Exception:
@@ -164,6 +176,8 @@ def load_monthly_roster_metadata(
     *,
     tenant_name: str = MONTHLY_DEMO_TENANT_NAME,
 ) -> MonthlyRosterMetadata:
+    """Load monthly roster display metadata from JSON base data plus DB reads."""
+
     db_people = _load_db_people(tenant_name)
     return _load_monthly_roster_metadata_from_sources(db_people)
 
@@ -183,6 +197,8 @@ def _overlay_engine_input_station_skills(
     engine_inputs: "EngineInputs",
     db_station_skills_by_name: dict[str, list[str]],
 ) -> "EngineInputs":
+    """Apply DB-backed station-skill overlays without replacing JSON base inputs."""
+
     if not db_station_skills_by_name or not is_dataclass(engine_inputs):
         return engine_inputs
 
@@ -224,7 +240,7 @@ def build_monthly_scheduling_inputs(
 
     Current architecture truth:
     - scheduling engine inputs are resolved through the demo-only tenant resolver
-      and are still JSON-backed
+      and remain JSON-canonical today
     - monthly roster metadata now prefers DB-backed active Employee records
     - monthly row ordering keeps JSON order where possible for compatibility
     - monthly station capability lookup now prefers DB-backed employee-station skills when present
@@ -233,6 +249,8 @@ def build_monthly_scheduling_inputs(
     - request leave overrides are applied at the monthly API boundary
     """
 
+    # Start from JSON-canonical engine inputs, then layer DB-backed monthly read
+    # overlays without changing the underlying scheduler source of truth.
     db_people = _load_db_people(tenant_name)
     roster_metadata = _load_monthly_roster_metadata_from_sources(db_people)
     db_station_skills_by_name = _build_db_station_skills_by_name(db_people or [])

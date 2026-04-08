@@ -1,6 +1,14 @@
+"""Scheduler engine input builders.
+
+Current architecture truth:
+- the demo scheduler is JSON-canonical today
+- ``build_inputs_from_json()`` is the canonical builder for demo scheduling flows
+- DB-backed helpers in this module are retained for non-canonical helper paths and
+  should not be read as a completed scheduler-input migration
+"""
+
 from __future__ import annotations
 
-from app.infra.db_loader import load_people, load_station_order
 from typing import TYPE_CHECKING
 
 from app.infra.json_loader import load_calendar, load_rules, load_shifts, load_workers
@@ -28,7 +36,14 @@ def _normalize_people_station_skills(people: list[dict]) -> list[dict]:
 
 
 def build_inputs_from_db(tenant_name: str) -> "EngineInputs":
+    """Build engine inputs from DB-backed read helpers.
+
+    This helper is intentionally kept available, but it is not the canonical
+    scheduler input path for the current demo scheduler.
+    """
+
     from app.generate_day import EngineInputs
+    from app.infra.db_loader import load_people, load_station_order
 
     shifts_list = load_shifts()
     rules = load_rules()
@@ -45,6 +60,8 @@ def build_inputs_from_db(tenant_name: str) -> "EngineInputs":
 
 
 def build_inputs_from_json() -> "EngineInputs":
+    """Build the canonical demo scheduler engine inputs from ``data/*.json``."""
+
     from app.generate_day import EngineInputs
 
     shifts_list = load_shifts()
@@ -61,6 +78,8 @@ def build_inputs_from_json() -> "EngineInputs":
 
     people = sorted(people, key=_person_key)
 
+    # Station ordering remains derived from the demo JSON rules until a real
+    # scheduler-input migration happens.
     stations = rules.get("stations") or {}
     station_order = sorted(_normalize_station_key(k) for k in stations.keys() if _normalize_station_key(k))
 

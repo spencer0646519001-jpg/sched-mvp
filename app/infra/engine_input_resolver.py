@@ -1,3 +1,10 @@
+"""Resolve canonical scheduler engine inputs for the current demo runtime.
+
+The resolver is intentionally narrow and truthful:
+- only the demo fixture tenant is supported
+- canonical demo scheduler inputs remain JSON-backed today
+"""
+
 from __future__ import annotations
 
 from app.infra.engine_inputs import build_inputs_from_json
@@ -33,5 +40,7 @@ def require_supported_engine_input_tenant(tenant_name: str) -> str:
 
 
 def resolve_engine_inputs_for_tenant(tenant_name: str):
+    """Return the canonical demo scheduler engine inputs for a supported tenant."""
+
     require_supported_engine_input_tenant(tenant_name)
     return build_inputs_from_json()

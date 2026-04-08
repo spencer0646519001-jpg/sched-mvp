@@ -16,14 +16,15 @@ It serves as a solid technical foundation for future AI-assisted scheduling syst
 
 - Canonical backend runtime: Django (`manage.py`, `config.asgi`, `config.wsgi`)
 - Main monthly demo/review path: `GET /ui/monthly`
-- Current scheduling inputs: `data/workers.json`, `data/rules.json`, `data/shifts.json`, `data/calendar.json`
+- Canonical demo scheduler input source of truth: `data/workers.json`, `data/rules.json`, `data/shifts.json`, `data/calendar.json`
+- Current monthly demo input assembly: JSON engine inputs plus DB-backed overlays/read-path support plus request-scoped leave/refine state
 - Current tenant support: canonical scheduling input resolution supports only `demo_kitchen`; other tenant names fail fast instead of reusing demo fixtures
-- Current DB role: Django models/admin plus persisted daily run outputs; the monthly demo flow is still request-scoped preview/export, not DB-backed monthly plan persistence
+- Current DB role: Django models/admin, metadata overlays, persisted daily run outputs, and selected read-path support; the monthly demo flow is still request-scoped preview/export, not DB-backed monthly plan persistence
 - Legacy/non-canonical runtime: `app/main.py` plus `app/api_*.py` FastAPI routes are rollback-only
 - Migration/parity surfaces: several Django `*_mirror` endpoints preserve older route shapes while Django is canonical
 - Determinism claim scope: the canonical daily scheduler core and the canonical Django monthly preview path are reproducible for identical inputs
 
-See `docs/architecture.md` for the short architecture walkthrough.
+See `docs/architecture.md` and `docs/adr/0001_demo_scheduler_source_of_truth.md` for the short architecture walkthrough and current scheduler source-of-truth decision.
 
 ---
 
@@ -59,9 +60,9 @@ The goal is not to claim “optimal schedules”, but to clearly answer:
 
 ### Data-Driven Configuration
 - no hard-coded stations or staff
-- current engine inputs are still loaded from `data/*.json`
+- demo scheduler engine inputs are JSON-canonical today and still loaded from `data/*.json`
 - canonical tenant-scoped scheduling currently supports only the `demo_kitchen` demo fixture tenant
-- Django Admin / SQLite currently back models and persisted run outputs
+- Django Admin / SQLite currently back models, metadata overlays, and persisted run outputs
 
 ### Minimal Demo UI
 - API driver only
@@ -76,7 +77,7 @@ The goal is not to claim “optimal schedules”, but to clearly answer:
 - Django (API + Admin)
 - LangGraph (decision flow & explainability)
 - SQLite (local development)
-- JSON fixtures currently drive scheduling inputs
+- JSON fixtures are the canonical demo scheduler inputs today
 
 ---
 
@@ -215,7 +216,7 @@ Used to manage:
 - Stations
 - Employee–Station skills
 
-These models are real and used for admin/persistence, but they are not yet the canonical input source for the current monthly demo flow.
+These models are real and used for admin/modeling, metadata overlays, and persistence, but they are not yet the canonical scheduler input source for the current demo flow.
 
 ### 2) Simple UI (API Driver / Demo)
 
@@ -253,7 +254,7 @@ Response includes:
 ### Current input reality
 
 - this endpoint is served by Django
-- the graph/explanation path resolves engine inputs through the shared demo-only resolver and still builds those inputs from `data/*.json`
+- the graph/explanation path resolves JSON-canonical demo engine inputs through the shared demo-only resolver and still builds those inputs from `data/*.json`
 - `demo_kitchen` is the only supported canonical scheduling tenant today; unsupported tenant names return a truthful error instead of silently using demo data
 - successful daily runs are then persisted to `ScheduleRun` / `Assignment`
 
@@ -262,7 +263,7 @@ Response includes:
 Read this structure with two caveats:
 
 - `app/` mixes shared engine code with the rollback-only FastAPI wrapper; it is not all legacy.
-- `data/` is still the current source of scheduling inputs for the main demo paths.
+- `data/` is still the canonical demo scheduler input source for the main demo paths.
 
 ```text
 sched-mvp/

@@ -25,16 +25,17 @@ Current flow:
 
 1. `core/ui_views.py` builds a request payload from `year_month`, `language`, `leave_requests`, and optional `refine_text`.
 2. The page uses `RequestFactory` to call the monthly Django API views in-process.
-3. `core/api_views.py` builds a month preview by chunking through `app/generate_week.py`, which in turn calls `app/generate_day.py`.
+3. `core/api_views.py` builds a month preview from a shared monthly input contract, then chunks through `app/generate_week.py`, which in turn calls `app/generate_day.py`.
 4. `refine` produces a preview diff and a preview grid only.
 5. The current `Apply / Save` action in the UI does not persist a monthly plan to the database. It only promotes the refine preview into the page state used for display/export.
 
 ## Scheduling Input Reality Today
 
-- The shared scheduling engine still reads its working inputs from `data/*.json`.
+- The demo scheduler's canonical engine input source of truth is still `data/*.json`.
 - In practice that means `workers.json`, `rules.json`, `shifts.json`, and `calendar.json` still drive the daily, graph, weekly, and monthly scheduling paths.
 - Canonical daily, graph, and monthly demo scheduling paths now resolve those inputs through `app/infra/engine_input_resolver.py`.
 - The resolver is intentionally honest: `demo_kitchen` is the only supported canonical scheduling tenant today, and unsupported tenant names fail instead of silently reusing demo fixtures.
+- `app/infra/monthly_scheduling_inputs.py` assembles the monthly demo input contract as JSON engine inputs plus DB-backed overlays/read-path support plus request-scoped leave/refine state.
 - Raw JSON loading still lives in `app/infra/engine_inputs.py`, with some direct `load_json(...)` calls remaining in legacy/parity helpers and non-scheduling UI lookup helpers.
 - Leave requests in the monthly demo are request-scoped input layered on top of those JSON fixtures.
 - Natural-language monthly refine also operates on the request-scoped preview; it is not a persisted monthly planning workflow yet.
@@ -45,9 +46,10 @@ Current flow:
 - The database currently provides:
   - runtime shell and routing through Django
   - admin-managed entities such as tenants, employees, stations, and skills
+  - metadata overlays and selected read-path support for monthly/demo surfaces
   - persisted daily run outputs via `ScheduleRun` and `Assignment`
-- The database is not yet the canonical source of engine inputs for the current monthly demo flow.
-- There are DB loader/adaptor modules in the repo, but the canonical scheduling paths still call the JSON-backed input builder today.
+- The database is not yet the canonical source of scheduler engine inputs for the current monthly demo flow.
+- There are DB loader/adaptor modules in the repo, but they currently support overlays, admin-backed reads, or non-canonical helpers; the canonical scheduling paths still call the JSON-backed input builder today.
 
 ## Legacy, Deprecated, Or Non-Canonical Areas
 
@@ -59,6 +61,7 @@ Current flow:
 ## Near-Term Direction
 
 - Keep Django as the only canonical runtime surface.
+- Keep the repo explicit that the demo scheduler is JSON-canonical until a real scheduler-input migration happens.
 - Continue shrinking or labeling parity/legacy HTTP surfaces instead of presenting them as a clean target architecture.
 - Either move canonical engine inputs onto DB-backed loaders or continue to treat `data/*.json` as explicit demo fixtures until that migration is actually complete.
 - Keep the monthly demo flow honest: request-scoped preview/refine/export first, persistence later if and when it is really implemented.
