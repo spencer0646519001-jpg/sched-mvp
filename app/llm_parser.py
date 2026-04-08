@@ -1,5 +1,6 @@
 # app/llm_parser.py
 import json
+import os
 from typing import Any, Dict, Optional, Literal
 
 from pydantic import BaseModel, Field
@@ -53,11 +54,34 @@ SYSTEM_PROMPT = """
 _LLM = None
 
 
+class LLMParserUnavailable(RuntimeError):
+    """Expected legacy-parser unavailability for offline/manual parity paths."""
+
+
+def _non_scheduling_result(reason: str) -> Dict[str, Any]:
+    return {
+        "intent": "non_scheduling",
+        "name_raw": None,
+        "name": None,
+        "name_confidence": 0.0,
+        "station_raw": None,
+        "station": None,
+        "station_confidence": 0.0,
+        "shift_raw": None,
+        "shift": None,
+        "shift_confidence": 0.0,
+        "reasoning": reason,
+    }
+
+
 def _get_llm():
     global _LLM
     if _LLM is None:
         # 這裡才 import，避免沒裝 langchain_openai 時讓整個 server 起不來
-        from langchain_openai import ChatOpenAI
+        try:
+            from langchain_openai import ChatOpenAI
+        except ImportError as exc:
+            raise LLMParserUnavailable("langchain-openai is not installed.") from exc
 
         _LLM = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
     return _LLM
@@ -115,20 +139,30 @@ def parse_request_to_patch(user_input: str) -> Dict[str, Any]:
         {"role": "user", "content": user_prompt},
     ]
 
-    llm = _get_llm()
-    resp = llm.invoke(messages)
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        return _non_scheduling_result(
+            "LLM parser unavailable: OPENAI_API_KEY is not configured."
+        )
+
+    try:
+        llm = _get_llm()
+    except LLMParserUnavailable as exc:
+        return _non_scheduling_result(f"LLM parser unavailable: {exc}")
+
+    from openai import APIConnectionError, APITimeoutError, AuthenticationError
+
+    try:
+        resp = llm.invoke(messages)
+    except (APIConnectionError, APITimeoutError, AuthenticationError) as exc:
+        return _non_scheduling_result(
+            f"LLM parser unavailable: {exc.__class__.__name__}."
+        )
 
     text = _extract_text(resp.content)
     text = _strip_code_fence(text)
 
     try:
         return json.loads(text)
-    except Exception:
-        return {
-            "intent": "non_scheduling",
-            "name": None,
-            "station": None,
-            "shift": None,
-            "confidence": 0.0,
-            "reasoning": "JSON parse error: " + text[:200],
-        }
+    except json.JSONDecodeError:
+        return _non_scheduling_result("JSON parse error: " + text[:200])

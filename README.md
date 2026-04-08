@@ -72,7 +72,7 @@ The goal is not to claim “optimal schedules”, but to clearly answer:
 
 ## Tech Stack
 
-- Python 3.11+
+- Python 3.13 (default CI/test target)
 - Django (API + Admin)
 - LangGraph (decision flow & explainability)
 - SQLite (local development)
@@ -87,8 +87,24 @@ python -m venv .venv
 # Windows
 .venv\Scripts\activate
 
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 python manage.py migrate
+```
+
+### Fresh-checkout default test path
+
+This is the default local test path and the same path exercised by CI.
+
+```bash
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python manage.py migrate
+python -m pytest -q
 ```
 
 ### Run locally (development)
@@ -173,15 +189,17 @@ Legacy FastAPI runtime code (`app/main.py` and `app/api_*.py`) is now **frozen**
 
 - Daily/default test run (CI/local):
   ```bash
-  pytest -q
+  python -m pytest -q
   ```
 
 - Manual/release-only legacy parity check:
   ```bash
-  pytest -q -m legacy
+  python -m pytest -q -m legacy
   ```
 
-> Note: `pytest -q` intentionally excludes legacy parity tests (Django is canonical; lower dual-runtime overhead). For manual/release parity verification, run `pytest -q -m legacy`.
+> Note: `python -m pytest -q` intentionally excludes legacy parity tests and is the only test command run in default CI.
+> For manual/release parity verification, run `python -m pytest -q -m legacy`.
+> The legacy parity path is offline-safe in a narrow way: if the rollback-only LLM patch parser cannot run because OpenAI credentials, the LangChain OpenAI package, or network access are unavailable, it returns a deterministic non-adjust result instead of silently succeeding.
 > FastAPI DeprecationWarning messages are accepted in legacy code and will be addressed when the legacy runtime is removed.
 
 ## Entry Points
