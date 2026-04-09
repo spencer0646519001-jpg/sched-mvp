@@ -81,7 +81,7 @@ def test_daily_runs_graph_ignores_language_input_and_keeps_english_summary(monke
                     "headcount_total": 0,
                 },
                 "decision_trace": [{"station": "gateau", "picked": []}],
-                "explanations": {"gateau": "この站位には割当がありません。"},
+                "explanations": {"gateau": "No assignment for this station."},
                 "metrics": {"fallback_stations": 0},
             },
         }
@@ -103,8 +103,6 @@ def test_daily_runs_graph_ignores_language_input_and_keeps_english_summary(monke
     body = json.loads(response.content.decode("utf-8"))
     assert body["ok"] is True
     assert body["summary"] == "Generated explanation for 1 station(s). Fallback used on 0 station(s)."
-    return
-    assert "説明" in body["summary"]
 
 
 def test_daily_runs_graph_langgraph_unavailable_returns_json_detail(monkeypatch):

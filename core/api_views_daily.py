@@ -413,21 +413,11 @@ def create_daily_run_graph(request, tenant_name: str):
     )
 
     stations_count = len(explanations) if isinstance(explanations, dict) else 0
-    if language == "ja":
-        summary = f"{stations_count} 件の站位について説明を生成しました。"
-        fallback_suffix = "fallback 使用站位: "
-    elif language == "zh":
-        summary = f"已為 {stations_count} 個站位產生說明。"
-        fallback_suffix = "fallback 使用站位："
-    else:
-        summary = f"Generated explanation for {stations_count} station(s)."
-        fallback_suffix = "Fallback used on "
+    summary = f"Generated explanation for {stations_count} station(s)."
+    fallback_suffix = "Fallback used on "
     if isinstance(metrics, dict) and metrics.get("fallback_stations") is not None:
         count = metrics.get("fallback_stations")
-        if language == "en":
-            summary = summary + f" {fallback_suffix}{count} station(s)."
-        else:
-            summary = summary + f" {fallback_suffix}{count}"
+        summary = summary + f" {fallback_suffix}{count} station(s)."
 
     text_parts = []
     if isinstance(explanations, dict):
