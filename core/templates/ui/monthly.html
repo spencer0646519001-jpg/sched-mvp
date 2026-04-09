@@ -27,11 +27,11 @@
           <div class="field">
             <label data-i18n="language">{{ t.language }}</label>
             <div class="lang-toggle" role="group" aria-label="language">
+              <button type="button" class="lang-btn" data-lang="en">en</button>
               <button type="button" class="lang-btn" data-lang="ja">ja</button>
               <button type="button" class="lang-btn" data-lang="zh">zh</button>
-              <button type="button" class="lang-btn" data-lang="en">en</button>
             </div>
-            <input id="language" name="language" type="hidden" value="{{ language|default:'ja' }}" />
+            <input id="language" name="language" type="hidden" value="{{ language|default:'en' }}" />
           </div>
         </div>
       </section>
@@ -73,7 +73,7 @@
             <span id="voice-status" class="voice-status" data-status="idle" data-i18n="voice_status_idle">{{ t.voice_status_idle }}</span>
           </div>
           <p id="voice-message" class="subtle voice-message" aria-live="polite"></p>
-          <textarea id="refine_text" name="refine_text" rows="4" placeholder="Masuda 2026-03-12 改成 OFF&#10;把 2026-03-15 的 gateau 換成 Kim&#10;2026-03-20 多補一個人到 oven">{{ refine_text }}</textarea>
+          <textarea id="refine_text" name="refine_text" rows="4" placeholder="Masuda on 2026-03-12 should be OFF&#10;Change gateau on 2026-03-15 to Kim&#10;Spencer 2026-03-20 to D">{{ refine_text }}</textarea>
         </div>
         <textarea id="refine_preview_json" name="refine_preview_json" class="json-input">{{ refine_preview_json }}</textarea>
         <textarea id="working_state_json" name="working_state_json" class="json-input">{{ working_state_json }}</textarea>
@@ -316,7 +316,7 @@
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
       let leaveRequests = {};
-      let currentLanguage = languageInput.value || "ja";
+      let currentLanguage = languageInput.value || "en";
       let recognition = null;
       let mediaRecorder = null;
       let mediaStream = null;
@@ -325,8 +325,8 @@
       let voiceMessageKey = "";
 
       function getT(lang, key) {
-        const selected = translations[lang] || translations.ja || {};
-        return selected[key] || (translations.ja || {})[key] || key;
+        const selected = translations[lang] || translations.en || {};
+        return selected[key] || (translations.en || {})[key] || key;
       }
 
       function voiceLocaleForLanguage(lang) {
@@ -538,7 +538,7 @@
       }
 
       function applyLanguageText(lang) {
-        currentLanguage = translations[lang] ? lang : "ja";
+        currentLanguage = translations[lang] ? lang : "en";
         document.querySelectorAll("[data-i18n]").forEach(function (node) {
           const key = node.dataset.i18n;
           node.textContent = getT(currentLanguage, key);
@@ -854,8 +854,8 @@
 
       safeParseLeave();
       syncLeaveField();
-      setLanguageActive(languageInput.value || "ja");
-      applyLanguageText(languageInput.value || "ja");
+      setLanguageActive(languageInput.value || "en");
+      applyLanguageText(languageInput.value || "en");
       initVoiceInput();
       renderLeaveChips();
 

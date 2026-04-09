@@ -98,9 +98,10 @@ def test_ui_monthly_get_renders():
     assert response.status_code == 200
     body = response.content.decode("utf-8")
     assert '<form method="post" id="monthly-form" class="grid-layout">' in body
-    assert re.search(r'<input[^>]*name="language"[^>]*value="ja"', body)
+    assert re.search(r'<input[^>]*name="language"[^>]*value="en"', body)
     assert '/api/tenants/demo_kitchen/daily-runs-graph/' in body
     assert re.search(r'<textarea[^>]*name="refine_text"[^>]*>', body)
+    assert "Masuda on 2026-03-12 should be OFF" in body
     assert re.search(r'<button[^>]*value="refine_preview"[^>]*>', body)
     assert re.search(r'<button[^>]*value="apply_refine"[^>]*disabled[^>]*>\s*Apply\s*</button>', body)
     assert re.search(r'<button[^>]*value="save"[^>]*>\s*Save\s*</button>', body)
@@ -352,11 +353,11 @@ def test_ui_monthly_voice_input_has_unsupported_fallback_path():
     assert "Voice recognition failed." in body
 
 
-def test_ui_monthly_voice_i18n_switches_ja_zh_en():
+def test_ui_monthly_voice_copy_stays_clean_for_ja_zh_en():
     _django_setup()
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
         client = Client()
-        ja_resp = client.get("/ui/monthly")
+        ja_resp = client.get("/ui/monthly?language=ja")
         zh_resp = client.post(
             "/ui/monthly",
             data={
@@ -386,8 +387,8 @@ def test_ui_monthly_voice_i18n_switches_ja_zh_en():
     zh_body = zh_resp.content.decode("utf-8")
     en_body = en_resp.content.decode("utf-8")
 
-    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*音声入力\s*</button>', ja_body)
-    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*語音輸入\s*</button>', zh_body)
+    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*Voice Input\s*</button>', ja_body)
+    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*Voice Input\s*</button>', zh_body)
     assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*Voice Input\s*</button>', en_body)
 
 
@@ -877,12 +878,12 @@ def test_ui_monthly_refine_preview_renders_db_station_label_in_diff(monkeypatch)
     assert re.search(r"Gateau Counter\s*/\s*gateau", body)
 
 
-def test_ui_monthly_refine_action_i18n_switches_between_ja_zh_en():
+def test_ui_monthly_refine_action_copy_stays_clean_for_ja_zh_en():
     _django_setup()
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
         client = Client()
 
-        ja_resp = client.get("/ui/monthly")
+        ja_resp = client.get("/ui/monthly?language=ja")
         en_resp = client.post(
             "/ui/monthly",
             data={
@@ -912,9 +913,9 @@ def test_ui_monthly_refine_action_i18n_switches_between_ja_zh_en():
     en_body = en_resp.content.decode("utf-8")
     zh_body = zh_resp.content.decode("utf-8")
 
-    assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*調整プレビュー\s*</button>', ja_body)
+    assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*Refine Preview\s*</button>', ja_body)
     assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*Refine Preview\s*</button>', en_body)
-    assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*調整預覽\s*</button>', zh_body)
+    assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*Refine Preview\s*</button>', zh_body)
 
 def test_ui_monthly_refine_preview_shows_fallback_parse_error(monkeypatch):
     _django_setup()
