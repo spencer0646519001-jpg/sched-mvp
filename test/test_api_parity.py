@@ -25,6 +25,12 @@ def _status_class(code: int) -> int:
     return code // 100
 
 
+def _django_legacy_path(path: str) -> str:
+    prefix = "/api/"
+    assert path.startswith(prefix), f"expected legacy API path, got: {path}"
+    return "/api/legacy/" + path[len(prefix):]
+
+
 def _assert_payload_shape_parity(fastapi_payload, django_payload):
     assert type(fastapi_payload) is type(django_payload)
 
@@ -86,7 +92,7 @@ def test_plan_endpoints_parity_harness():
         # POST /api/plan/create
         f_create = fastapi_client.post("/api/plan/create", json={"date": "2025-11-10"})
         d_create = django_client.post(
-            "/api/plan/create",
+            _django_legacy_path("/api/plan/create"),
             data='{"date": "2025-11-10"}',
             content_type="application/json",
         )
@@ -103,7 +109,7 @@ def test_plan_endpoints_parity_harness():
             json={"plan_id": fastapi_plan_id, "text": "把 Chung 改到 GATEAU 晚班"},
         )
         d_preview = django_client.post(
-            "/api/plan/patch_preview",
+            _django_legacy_path("/api/plan/patch_preview"),
             data=json.dumps({"plan_id": django_plan_id, "text": "把 Chung 改到 GATEAU 晚班"}),
             content_type="application/json",
         )
@@ -115,7 +121,7 @@ def test_plan_endpoints_parity_harness():
             json={"plan_id": fastapi_plan_id, "text": "把 Chung 改到 GATEAU 晚班"},
         )
         d_apply = django_client.post(
-            "/api/plan/patch_apply",
+            _django_legacy_path("/api/plan/patch_apply"),
             data=json.dumps({"plan_id": django_plan_id, "text": "把 Chung 改到 GATEAU 晚班"}),
             content_type="application/json",
         )
@@ -123,27 +129,27 @@ def test_plan_endpoints_parity_harness():
 
         # GET /api/plan/get (ok)
         f_get_ok = fastapi_client.get("/api/plan/get", params={"plan_id": fastapi_plan_id})
-        d_get_ok = django_client.get("/api/plan/get", {"plan_id": django_plan_id})
+        d_get_ok = django_client.get(_django_legacy_path("/api/plan/get"), {"plan_id": django_plan_id})
         _assert_parity(f_get_ok, d_get_ok)
 
         # GET /api/plan/get (missing)
         f_get_missing = fastapi_client.get("/api/plan/get")
-        d_get_missing = django_client.get("/api/plan/get")
+        d_get_missing = django_client.get(_django_legacy_path("/api/plan/get"))
         _assert_parity(f_get_missing, d_get_missing)
 
         # GET /api/plan/list
         f_list = fastapi_client.get("/api/plan/list")
-        d_list = django_client.get("/api/plan/list")
+        d_list = django_client.get(_django_legacy_path("/api/plan/list"))
         _assert_parity(f_list, d_list)
 
         # DELETE /api/plan/delete (ok)
         f_delete_ok = fastapi_client.delete("/api/plan/delete", params={"plan_id": fastapi_plan_id})
-        d_delete_ok = django_client.delete(f"/api/plan/delete?plan_id={django_plan_id}")
+        d_delete_ok = django_client.delete(f"{_django_legacy_path('/api/plan/delete')}?plan_id={django_plan_id}")
         _assert_parity(f_delete_ok, d_delete_ok)
 
         # DELETE /api/plan/delete (missing)
         f_delete_missing = fastapi_client.delete("/api/plan/delete")
-        d_delete_missing = django_client.delete("/api/plan/delete")
+        d_delete_missing = django_client.delete(_django_legacy_path("/api/plan/delete"))
         _assert_parity(f_delete_missing, d_delete_missing)
 
 
@@ -166,29 +172,41 @@ def test_week_month_calendar_endpoints_parity_harness():
         django_client = Client()
 
         f_week = fastapi_client.get("/api/week", params={"start_date": "2025-11-10", "days": 7})
-        d_week = django_client.get("/api/week", {"start_date": "2025-11-10", "days": 7})
+        d_week = django_client.get(_django_legacy_path("/api/week"), {"start_date": "2025-11-10", "days": 7})
         _assert_parity(f_week, d_week)
 
         f_week_summary = fastapi_client.get("/api/week/summary", params={"start_date": "2025-11-10", "days": 7})
-        d_week_summary = django_client.get("/api/week/summary", {"start_date": "2025-11-10", "days": 7})
+        d_week_summary = django_client.get(
+            _django_legacy_path("/api/week/summary"),
+            {"start_date": "2025-11-10", "days": 7},
+        )
         _assert_parity(f_week_summary, d_week_summary)
 
         f_month = fastapi_client.get("/api/month", params={"start_date": "2025-11-10"})
-        d_month = django_client.get("/api/month", {"start_date": "2025-11-10"})
+        d_month = django_client.get(_django_legacy_path("/api/month"), {"start_date": "2025-11-10"})
         _assert_parity(f_month, d_month)
 
         f_calendar_month = fastapi_client.get("/api/calendar/month", params={"start_date": "2025-11-10"})
-        d_calendar_month = django_client.get("/api/calendar/month", {"start_date": "2025-11-10"})
+        d_calendar_month = django_client.get(
+            _django_legacy_path("/api/calendar/month"),
+            {"start_date": "2025-11-10"},
+        )
         _assert_parity(f_calendar_month, d_calendar_month)
 
         f_week_csv = fastapi_client.get("/api/week_csv", params={"start_date": "2025-11-10", "days": 7})
-        d_week_csv = django_client.get("/api/week_csv", {"start_date": "2025-11-10", "days": 7})
+        d_week_csv = django_client.get(
+            _django_legacy_path("/api/week_csv"),
+            {"start_date": "2025-11-10", "days": 7},
+        )
         _assert_csv_parity(f_week_csv, d_week_csv)
 
         f_month_csv = fastapi_client.get("/api/month_csv", params={"start_date": "2025-11-10"})
-        d_month_csv = django_client.get("/api/month_csv", {"start_date": "2025-11-10"})
+        d_month_csv = django_client.get(_django_legacy_path("/api/month_csv"), {"start_date": "2025-11-10"})
         _assert_csv_parity(f_month_csv, d_month_csv)
 
         f_calendar_month_csv = fastapi_client.get("/api/calendar/month_csv", params={"start_date": "2025-11-10"})
-        d_calendar_month_csv = django_client.get("/api/calendar/month_csv", {"start_date": "2025-11-10"})
+        d_calendar_month_csv = django_client.get(
+            _django_legacy_path("/api/calendar/month_csv"),
+            {"start_date": "2025-11-10"},
+        )
         _assert_csv_parity(f_calendar_month_csv, d_calendar_month_csv)

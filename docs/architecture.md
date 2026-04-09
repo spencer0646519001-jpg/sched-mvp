@@ -8,7 +8,7 @@ This repository is a hiring-portfolio scheduling MVP for explainable kitchen sta
 
 - The canonical backend runtime is Django.
 - The live entrypoints are `manage.py`, `config/asgi.py`, and `config/wsgi.py`.
-- Django routes are wired through `config/urls.py` into `core/api_views.py` and `core/ui_views.py`.
+- Django routes are wired through `config/urls.py` into canonical `core/api_urls.py`, quarantined legacy `core/api_urls_legacy.py`, and `core/ui_views.py`.
 
 ## Main Monthly Demo Flow Today
 
@@ -57,7 +57,8 @@ Current flow:
 
 - `app/main.py` plus `app/api_week.py`, `app/api_calendar.py`, and `app/api_llm_patch.py` are the rollback-only legacy FastAPI runtime.
 - `app/` is not wholly legacy. Most of the shared scheduling engine still lives there and is used by the canonical Django runtime.
-- Several Django `*_mirror` endpoints in `core/api_views.py` and `core/api_urls.py` are migration/parity surfaces that preserve older route shapes while Django is the canonical runtime.
+- Several Django `*_mirror` endpoints are migration/parity surfaces that preserve older route shapes while Django is the canonical runtime.
+- Those Django compatibility routes are intentionally quarantined under `/api/legacy/...` via `core/api_urls_legacy.py` so `core/api_urls.py` stays the canonical public API map.
 - `docs/fastapi_drf_migration_survey.md` is migration context, not the source of truth for current runtime behavior.
 
 ## Near-Term Direction

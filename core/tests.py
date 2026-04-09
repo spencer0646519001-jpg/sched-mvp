@@ -1,6 +1,14 @@
+import os
+
+import django
 from django.test import Client
 
 from app.engine_runner import run_engine
+
+
+def _django_setup():
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+    django.setup()
 
 
 def test_engine_runner_schema():
@@ -20,6 +28,7 @@ def test_engine_runner_schema():
 
 
 def test_root_healthcheck_mirror_shape():
+    _django_setup()
     client = Client()
 
     resp = client.get("/")
@@ -29,9 +38,10 @@ def test_root_healthcheck_mirror_shape():
 
 
 def test_generate_day_mirror_core_shape():
+    _django_setup()
     client = Client()
 
-    resp = client.get("/api/generate/day/2025-11-10", {"absent": "Chung,Masuda"})
+    resp = client.get("/api/legacy/generate/day/2025-11-10", {"absent": "Chung,Masuda"})
 
     assert resp.status_code == 200
     payload = resp.json()

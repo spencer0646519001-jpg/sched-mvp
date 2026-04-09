@@ -25,5 +25,6 @@ urlpatterns = [
     path("", root_healthcheck, name="root_healthcheck"),
     path("ui/", include("core.ui_urls")),
     path("admin/", admin.site.urls),
+    path("api/legacy/", include("core.api_urls_legacy")),
     path("api/", include("core.api_urls")),
 ]

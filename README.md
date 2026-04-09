@@ -23,6 +23,7 @@ The main reviewer/demo path today is `/ui/monthly`.
 
 - Canonical runtime: Django via `manage.py`, `config.asgi`, and `config.wsgi`.
 - Legacy runtime: `app/main.py` and `app/api_*.py` FastAPI routes are rollback-only and feature-frozen.
+- Canonical Django routes stay under `/api/...`; retained Django compatibility/parity routes are grouped under `/api/legacy/...`.
 - Canonical scheduler inputs: the demo scheduler still resolves engine inputs from `data/workers.json`, `data/rules.json`, `data/shifts.json`, and `data/calendar.json`.
 - Database role: admin/modeling, metadata overlays, immutable daily run history, and selected read-path support.
 - Not true today: a fully DB-backed scheduler input pipeline.
@@ -97,6 +98,8 @@ Docker is for local dev/demo runtime. The Dockerfile uses Python 3.13 and the sa
 
 FastAPI is not the normal development path. It exists only as a rollback surface and is guarded behind `ENABLE_LEGACY_FASTAPI_RUNTIME=1`.
 
+Django also keeps a small compatibility/parity surface for review and rollback support. Those Django compatibility routes live under `/api/legacy/...` so the main `/api/...` route map stays canonical and reviewer-readable.
+
 ## Testing And CI
 
 Default local test path:
@@ -155,5 +158,5 @@ This project is not:
 
 - The canonical scheduler input path is still JSON-backed, so admin data does not yet replace `data/*.json` as the engine source of truth.
 - Monthly persistence covers the current workspace document only; it does not imply DB-canonical scheduler inputs or relational monthly planning.
-- Legacy mirror and parity endpoints still exist because the runtime migration is not fully pruned.
+- Legacy mirror and parity endpoints still exist because the runtime migration is not fully pruned, but Django now quarantines them under `/api/legacy/...`.
 - The strongest tenant semantics today are honesty, not breadth: unsupported tenants fail fast instead of pretending to be supported.
