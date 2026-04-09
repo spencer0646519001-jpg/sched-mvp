@@ -145,6 +145,38 @@ class ScheduleRun(TimeStampedModel):
         ]
 
 
+class MonthlyWorkspace(TimeStampedModel):
+    """
+    Persisted monthly workspace state for the canonical Django reviewer flow.
+
+    This model stores the current workspace document for a tenant/month without
+    claiming that scheduler engine inputs are DB-canonical.
+    """
+
+    tenant = models.ForeignKey(
+        Tenant, on_delete=models.CASCADE, related_name="monthly_workspaces"
+    )
+    year_month = models.CharField(max_length=7)
+    language = models.CharField(max_length=8, default="ja")
+    leave_requests = models.JSONField(default=dict, blank=True)
+    working_state = models.JSONField(default=dict, blank=True)
+    revision = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "year_month"],
+                name="uniq_monthly_workspace_per_tenant_month",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["tenant", "year_month"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.tenant}:{self.year_month}"
+
+
 class Assignment(TimeStampedModel):
     """
     排班結果：某天、某站位、派到誰

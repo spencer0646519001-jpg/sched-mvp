@@ -6,26 +6,30 @@ Reviewer notes:
 - The page does not call an external frontend app; it builds internal Django
   requests and reuses the monthly API views in-process.
 - "Apply" updates the current request-scoped working state used for export.
-- "Save" is intentionally disabled until real monthly persistence exists.
+- "Save" persists the current monthly workspace state for later restoration.
 - Monthly helper names now reuse the canonical roster metadata read-path.
 """
 
 # core/ui_views.py
 import json
 from datetime import date
+from urllib.parse import urlencode
 
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.test.client import RequestFactory
+from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from app.infra.monthly_scheduling_inputs import (
     MONTHLY_DEMO_TENANT_NAME,
     load_monthly_roster_metadata,
 )
+from core import monthly_workspace_persistence, monthly_workspace_service
 from core.api_views_monthly import (
     api_monthly_export_csv,
     api_monthly_preview_mirror,
     api_monthly_refine_mirror,
+    api_monthly_workspace_save,
 )
 
 
@@ -188,6 +192,23 @@ UI_TRANSLATIONS = {
     },
 }
 
+
+MONTHLY_UI_TRANSIENT_STATE_SESSION_KEY = "ui_monthly_transient_state"
+MONTHLY_UI_NOTICE_SESSION_KEY = "ui_monthly_notice"
+MONTHLY_UI_TRANSIENT_STATE_FIELDS = (
+    "language",
+    "leave_requests_raw",
+    "refine_text",
+    "refine_preview_json",
+    "working_state_json",
+    "preview_data",
+    "refine_data",
+    "refine_applied",
+    "apply_notice",
+    "workspace_notice",
+    "error_message",
+)
+
 VOICE_UI_TRANSLATIONS = {
     "ja": {
         "voice_input": "音声入力",
@@ -255,16 +276,6 @@ def _translation_pack(language: str) -> dict:
     }
 
 
-def _build_monthly_working_state(*, people_grid, weekly_rest_warnings=None, warnings=None) -> dict | None:
-    if not isinstance(people_grid, dict):
-        return None
-    return {
-        "people_grid": people_grid,
-        "weekly_rest_warnings": list(weekly_rest_warnings or []),
-        "warnings": list(warnings or []),
-    }
-
-
 def _parse_monthly_working_state(raw_json: str) -> dict:
     try:
         parsed = json.loads(raw_json or "{}")
@@ -273,13 +284,104 @@ def _parse_monthly_working_state(raw_json: str) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _monthly_redirect_response(*, year_month: str, language: str):
+    query = {"year_month": year_month}
+    if language:
+        query["language"] = language
+    return redirect(f"{reverse('ui_monthly')}?{urlencode(query)}")
+
+
+def _stash_monthly_ui_transient_state(request, context: dict) -> None:
+    request.session[MONTHLY_UI_TRANSIENT_STATE_SESSION_KEY] = {
+        "year_month": str(context.get("year_month") or ""),
+        "state": {
+            key: context.get(key)
+            for key in MONTHLY_UI_TRANSIENT_STATE_FIELDS
+        },
+    }
+
+
+def _consume_monthly_ui_transient_state(request, *, year_month: str) -> dict | None:
+    payload = request.session.pop(MONTHLY_UI_TRANSIENT_STATE_SESSION_KEY, None)
+    if not isinstance(payload, dict):
+        return None
+    if str(payload.get("year_month") or "") != str(year_month or ""):
+        return None
+    state = payload.get("state")
+    return state if isinstance(state, dict) else None
+
+
+def _apply_monthly_ui_transient_state(context: dict, state: dict) -> None:
+    for key in MONTHLY_UI_TRANSIENT_STATE_FIELDS:
+        if key in state:
+            context[key] = state.get(key)
+
+
+def _stash_monthly_ui_notice(request, *, year_month: str, message: str) -> None:
+    request.session[MONTHLY_UI_NOTICE_SESSION_KEY] = {
+        "year_month": str(year_month or ""),
+        "message": str(message or ""),
+    }
+
+
+def _consume_monthly_ui_notice(request, *, year_month: str) -> str:
+    payload = request.session.pop(MONTHLY_UI_NOTICE_SESSION_KEY, None)
+    if not isinstance(payload, dict):
+        return ""
+    if str(payload.get("year_month") or "") != str(year_month or ""):
+        return ""
+    return str(payload.get("message") or "")
+
+
 def _store_monthly_working_state(context: dict, *, people_grid, weekly_rest_warnings=None, warnings=None) -> None:
-    state = _build_monthly_working_state(
+    state = monthly_workspace_service.build_monthly_working_state(
         people_grid=people_grid,
         weekly_rest_warnings=weekly_rest_warnings,
         warnings=warnings,
     )
     context["working_state_json"] = json.dumps(state, ensure_ascii=False) if state else ""
+
+
+def _build_preview_data_from_working_state(
+    *,
+    year_month: str,
+    language: str,
+    leave_requests: dict,
+    working_state: dict,
+) -> dict:
+    preview_data = {
+        "people_grid": working_state.get("people_grid", {}),
+        "weekly_rest_warnings": list(working_state.get("weekly_rest_warnings", [])),
+        "warnings": list(working_state.get("warnings", [])),
+    }
+    rf = RequestFactory()
+    internal_request = rf.post(
+        "/api/monthly/preview",
+        data=json.dumps(
+            {
+                "year_month": year_month,
+                "language": language,
+                "leave_requests": leave_requests,
+            }
+        ),
+        content_type="application/json",
+    )
+    api_response = api_monthly_preview_mirror(internal_request)
+    if api_response.status_code != 200:
+        return preview_data
+
+    try:
+        base_preview = json.loads(api_response.content.decode("utf-8"))
+    except json.JSONDecodeError:
+        return preview_data
+    if not isinstance(base_preview, dict):
+        return preview_data
+
+    merged_preview = dict(base_preview)
+    merged_preview["people_grid"] = preview_data["people_grid"]
+    merged_preview["weekly_rest_warnings"] = preview_data["weekly_rest_warnings"]
+    merged_preview["warnings"] = preview_data["warnings"]
+    return merged_preview
 
 
 @require_http_methods(["GET"])
@@ -290,26 +392,82 @@ def ui_home(request):
 @require_http_methods(["GET", "POST"])
 def ui_monthly(request):
     """Drive the current monthly preview/refine/export demo from one Django page."""
-    year_month = request.POST.get("year_month") if request.method == "POST" else date.today().strftime("%Y-%m")
-    language = request.POST.get("language", "ja")
-    leave_requests_raw = request.POST.get("leave_requests", "{}")
-    refine_text = request.POST.get("refine_text", "")
-    refine_preview_raw = request.POST.get("refine_preview_json", "")
-    working_state_raw = request.POST.get("working_state_json", "")
+    year_month = (
+        request.POST.get("year_month")
+        if request.method == "POST"
+        else request.GET.get("year_month", date.today().strftime("%Y-%m"))
+    )
+    saved_workspace = None
+    transient_state = None
+    workspace_notice = ""
+    if request.method == "GET":
+        saved_workspace = monthly_workspace_persistence.load_monthly_workspace(
+            tenant_name=MONTHLY_DEMO_TENANT_NAME,
+            year_month=year_month,
+        )
+        transient_state = _consume_monthly_ui_transient_state(request, year_month=year_month)
+        workspace_notice = _consume_monthly_ui_notice(request, year_month=year_month)
+
+    language = (
+        request.POST.get("language", "ja")
+        if request.method == "POST"
+        else str(
+            (transient_state or {}).get("language")
+            or (saved_workspace or {}).get("language")
+            or request.GET.get("language")
+            or "ja"
+        )
+    )
+    leave_requests_raw = (
+        request.POST.get("leave_requests", "{}")
+        if request.method == "POST"
+        else (
+            str((transient_state or {}).get("leave_requests_raw"))
+            if transient_state is not None and "leave_requests_raw" in transient_state
+            else json.dumps((saved_workspace or {}).get("leave_requests", {}), ensure_ascii=False)
+        )
+    )
+    refine_text = (
+        request.POST.get("refine_text", "")
+        if request.method == "POST"
+        else str((transient_state or {}).get("refine_text") or "")
+    )
+    refine_preview_raw = (
+        request.POST.get("refine_preview_json", "")
+        if request.method == "POST"
+        else str((transient_state or {}).get("refine_preview_json") or "")
+    )
+    working_state_raw = (
+        request.POST.get("working_state_json", "")
+        if request.method == "POST"
+        else (
+            str((transient_state or {}).get("working_state_json") or "")
+            if transient_state is not None and "working_state_json" in transient_state
+            else (
+                json.dumps((saved_workspace or {}).get("working_state", {}), ensure_ascii=False)
+                if saved_workspace is not None
+                else ""
+            )
+        )
+    )
     action = request.POST.get("action", "")
 
     tr = _translation_pack(language)
     t_pack = dict(tr["t"])
     t_pack.setdefault("refine_title", "Refine Schedule")
     t_pack.setdefault("refine_help", "Input natural-language schedule adjustments, then preview diff before apply/save.")
-    t_pack.setdefault("refine_semantics_help", "Input natural-language schedule adjustments, preview the candidate diff, then Apply it to update the working state. Save is not implemented yet.")
+    t_pack.setdefault("refine_semantics_help", "Input natural-language schedule adjustments, preview the candidate diff, then Apply it to update the working state. Save persists the current workspace.")
     t_pack.setdefault("refine_text_label", "Refine Text")
     t_pack.setdefault("refine_preview", "Refine Preview")
-    t_pack.setdefault("action_semantics", "Preview builds the current working schedule. Refine Preview shows candidate changes. Apply updates the working state used by Export CSV.")
+    t_pack.setdefault("action_semantics", "Preview rebuilds from canonical inputs. Refine Preview shows candidate changes. Apply updates current working state. Save persists the current state used by Export CSV.")
     t_pack.setdefault("apply_label", "Apply")
     t_pack.setdefault("apply_disabled_help", "Run Refine Preview before Apply.")
     t_pack.setdefault("save_label", "Save")
-    t_pack.setdefault("save_disabled_help", "Save is disabled until monthly persistence is implemented.")
+    t_pack.setdefault("save_help", "Save persists the current working state for this month.")
+    t_pack.setdefault("workspace_saved_notice", "Saved current workspace.")
+    t_pack.setdefault("workspace_restored_notice", "Restored saved workspace for ")
+    t_pack.setdefault("save_requires_workspace", "Save requires a current workspace. Run Preview or Apply first.")
+    t_pack.setdefault("save_failed", "Unable to save current workspace.")
     t_pack.setdefault("diff_preview", "Diff Preview")
     t_pack.setdefault("shift_legend", "Shift Legend")
     t_pack.setdefault("refine_candidate_notice", "Showing a refine candidate only. Export CSV still uses the current working state until you Apply.")
@@ -328,14 +486,18 @@ def ui_monthly(request):
     for lang, pack in ui_translations.items():
         pack.setdefault("refine_title", "Refine Schedule")
         pack.setdefault("refine_help", "Input natural-language schedule adjustments, then preview diff before apply/save.")
-        pack.setdefault("refine_semantics_help", "Input natural-language schedule adjustments, preview the candidate diff, then Apply it to update the working state. Save is not implemented yet.")
+        pack.setdefault("refine_semantics_help", "Input natural-language schedule adjustments, preview the candidate diff, then Apply it to update the working state. Save persists the current workspace.")
         pack.setdefault("refine_text_label", "Refine Text")
         pack.setdefault("refine_preview", "Refine Preview")
-        pack.setdefault("action_semantics", "Preview builds the current working schedule. Refine Preview shows candidate changes. Apply updates the working state used by Export CSV.")
+        pack.setdefault("action_semantics", "Preview rebuilds from canonical inputs. Refine Preview shows candidate changes. Apply updates current working state. Save persists the current state used by Export CSV.")
         pack.setdefault("apply_label", "Apply")
         pack.setdefault("apply_disabled_help", "Run Refine Preview before Apply.")
         pack.setdefault("save_label", "Save")
-        pack.setdefault("save_disabled_help", "Save is disabled until monthly persistence is implemented.")
+        pack.setdefault("save_help", "Save persists the current working state for this month.")
+        pack.setdefault("workspace_saved_notice", "Saved current workspace.")
+        pack.setdefault("workspace_restored_notice", "Restored saved workspace for ")
+        pack.setdefault("save_requires_workspace", "Save requires a current workspace. Run Preview or Apply first.")
+        pack.setdefault("save_failed", "Unable to save current workspace.")
         pack.setdefault("diff_preview", "Diff Preview")
         pack.setdefault("shift_legend", "Shift Legend")
         pack.setdefault("refine_candidate_notice", "Showing a refine candidate only. Export CSV still uses the current working state until you Apply.")
@@ -366,10 +528,27 @@ def ui_monthly(request):
         "refine_data": None,
         "refine_applied": False,
         "apply_notice": "",
+        "workspace_notice": workspace_notice,
         "error_message": "",
         "t": t_pack,
         "ui_translations_json": json.dumps(ui_translations, ensure_ascii=False),
     }
+
+    if request.method == "GET" and transient_state is not None:
+        _apply_monthly_ui_transient_state(context, transient_state)
+    elif request.method == "GET" and saved_workspace is not None:
+        leave_requests = dict(saved_workspace.get("leave_requests") or {})
+        working_state = dict(saved_workspace.get("working_state") or {})
+        context["leave_requests_raw"] = json.dumps(leave_requests, ensure_ascii=False)
+        context["working_state_json"] = json.dumps(working_state, ensure_ascii=False)
+        context["preview_data"] = _build_preview_data_from_working_state(
+            year_month=year_month,
+            language=context["language"],
+            leave_requests=leave_requests,
+            working_state=working_state,
+        )
+        if not context["workspace_notice"]:
+            context["workspace_notice"] = f"{context['t']['workspace_restored_notice']}{year_month}."
 
     if request.method == "POST":
         try:
@@ -408,6 +587,11 @@ def ui_monthly(request):
                     weekly_rest_warnings=preview_data.get("weekly_rest_warnings", []),
                     warnings=preview_data.get("warnings", []),
                 )
+                _stash_monthly_ui_transient_state(request, context)
+                return _monthly_redirect_response(
+                    year_month=year_month,
+                    language=context["language"],
+                )
             else:
                 try:
                     err = json.loads(api_response.content.decode("utf-8"))
@@ -438,6 +622,9 @@ def ui_monthly(request):
         if action == "refine_preview":
             refine_payload = dict(payload)
             refine_payload["refine_text"] = refine_text
+            working_state = _parse_monthly_working_state(working_state_raw)
+            if isinstance(working_state.get("people_grid"), dict):
+                refine_payload["working_state"] = working_state
             internal_request = rf.post(
                 "/api/monthly/refine",
                 data=json.dumps(refine_payload),
@@ -461,6 +648,11 @@ def ui_monthly(request):
                         context["error_message"] = f"{context['t']['refine_parse_failed']}: {message}"
                     else:
                         context["error_message"] = context["t"]["refine_parse_failed"]
+                _stash_monthly_ui_transient_state(request, context)
+                return _monthly_redirect_response(
+                    year_month=year_month,
+                    language=context["language"],
+                )
             else:
                 try:
                     err = json.loads(api_response.content.decode("utf-8"))
@@ -507,8 +699,66 @@ def ui_monthly(request):
                     warnings=refine_data.get("warnings", []),
                 )
                 context["apply_notice"] = context["t"]["apply_notice"]
+                _stash_monthly_ui_transient_state(request, context)
+                return _monthly_redirect_response(
+                    year_month=year_month,
+                    language=context["language"],
+                )
             else:
                 context["error_message"] = context["t"]["refine_failed"]
+
+        if action == "save":
+            working_state = _parse_monthly_working_state(working_state_raw)
+            if not isinstance(working_state.get("people_grid"), dict):
+                context["error_message"] = context["t"]["save_requires_workspace"]
+            else:
+                context["preview_data"] = _build_preview_data_from_working_state(
+                    year_month=year_month,
+                    language=context["language"],
+                    leave_requests=leave_requests,
+                    working_state=working_state,
+                )
+                save_payload = dict(payload)
+                save_payload["working_state"] = working_state
+                internal_request = rf.post(
+                    "/api/monthly/workspace/save",
+                    data=json.dumps(save_payload),
+                    content_type="application/json",
+                )
+                api_response = api_monthly_workspace_save(internal_request)
+                if api_response.status_code == 200:
+                    try:
+                        save_result = json.loads(api_response.content.decode("utf-8"))
+                    except json.JSONDecodeError:
+                        save_result = {}
+                    workspace = save_result.get("workspace") if isinstance(save_result, dict) else {}
+                    if isinstance(workspace, dict):
+                        saved_leave_requests = dict(workspace.get("leave_requests") or leave_requests)
+                        saved_working_state = dict(workspace.get("working_state") or working_state)
+                        context["leave_requests_raw"] = json.dumps(saved_leave_requests, ensure_ascii=False)
+                        context["working_state_json"] = json.dumps(saved_working_state, ensure_ascii=False)
+                        context["preview_data"] = _build_preview_data_from_working_state(
+                            year_month=year_month,
+                            language=context["language"],
+                            leave_requests=saved_leave_requests,
+                            working_state=saved_working_state,
+                        )
+                    context["workspace_notice"] = context["t"]["workspace_saved_notice"]
+                    _stash_monthly_ui_notice(
+                        request,
+                        year_month=year_month,
+                        message=context["workspace_notice"],
+                    )
+                    return _monthly_redirect_response(
+                        year_month=year_month,
+                        language=context["language"],
+                    )
+                else:
+                    try:
+                        err = json.loads(api_response.content.decode("utf-8"))
+                        context["error_message"] = err.get("detail") or context["t"]["save_failed"]
+                    except json.JSONDecodeError:
+                        context["error_message"] = f"Save failed (HTTP {api_response.status_code})."
 
     return render(request, "ui/monthly.html", context)
 

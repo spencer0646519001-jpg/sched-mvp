@@ -81,6 +81,30 @@ def main() -> None:
             content_type="application/json",
         )
         assert monthly_response.status_code == 200
+        monthly_body = json.loads(monthly_response.content.decode("utf-8"))
+
+        workspace_save_response = client.post(
+            "/api/monthly/workspace/save",
+            data=json.dumps(
+                {
+                    "year_month": "2025-11",
+                    "leave_requests": {},
+                    "language": "en",
+                    "working_state": {
+                        "people_grid": monthly_body["people_grid"],
+                        "warnings": monthly_body.get("warnings", []),
+                        "weekly_rest_warnings": monthly_body.get("weekly_rest_warnings", []),
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+        assert workspace_save_response.status_code == 200
+
+        monthly_ui_response = client.get("/ui/monthly?year_month=2025-11")
+        assert monthly_ui_response.status_code == 200
+        monthly_ui_text = monthly_ui_response.content.decode("utf-8")
+        assert "Restored saved workspace for 2025-11." in monthly_ui_text
 
         daily_response = client.post(
             "/api/tenants/demo_kitchen/daily-runs/",

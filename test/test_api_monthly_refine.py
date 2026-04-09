@@ -43,6 +43,67 @@ def test_monthly_refine_returns_diff_and_preview_people_grid():
     assert any(item.get("date") == "2025-11-05" for item in data["diff"])
 
 
+def test_monthly_refine_uses_working_state_when_provided(monkeypatch):
+    _django_setup()
+
+    import core.api_views_monthly as api_views
+
+    date_str = "2025-11-05"
+    preview_people_grid = {
+        "year_month": "2025-11",
+        "dates": [date_str],
+        "rows": [{"name": "Spencer", "role": "staff", "cells": [{"code": "A", "note": ""}]}],
+    }
+    saved_people_grid = {
+        "year_month": "2025-11",
+        "dates": [date_str],
+        "rows": [{"name": "Spencer", "role": "staff", "cells": [{"code": "D", "note": "saved"}]}],
+    }
+
+    monkeypatch.setattr(
+        api_views,
+        "_build_monthly_preview",
+        lambda _inputs: {
+            "people_grid": preview_people_grid,
+            "warnings": ["BASE_WARNING"],
+            "weekly_rest_warnings": [],
+            "shift_metadata": [],
+            "station_metadata": [],
+        },
+    )
+
+    payload = {
+        "year_month": "2025-11",
+        "language": "en",
+        "leave_requests": {},
+        "working_state": {
+            "people_grid": saved_people_grid,
+            "warnings": ["SAVED_WARNING"],
+            "weekly_rest_warnings": [],
+        },
+        "refine_text": "Spencer 2025-11-05 to OFF",
+    }
+
+    with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
+        client = Client()
+        response = client.post(
+            "/api/monthly/refine",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    data = json.loads(response.content.decode("utf-8"))
+    assert data.get("ok") is True
+    assert any(
+        item.get("date") == date_str
+        and (item.get("from") or {}).get("code") == "D"
+        and (item.get("to") or {}).get("code") == "OFF"
+        for item in (data.get("diff") or [])
+    )
+    assert "SAVED_WARNING" in (data.get("warnings") or [])
+
+
 def test_monthly_refine_empty_text_returns_warning_but_200():
     _django_setup()
 

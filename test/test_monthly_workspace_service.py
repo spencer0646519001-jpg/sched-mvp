@@ -5,8 +5,10 @@ from types import SimpleNamespace
 from core.monthly_workspace_service import (
     MonthlyPreviewHooks,
     MonthlyWorkspaceHooks,
+    build_monthly_working_state,
     build_monthly_export_csv,
     build_monthly_preview,
+    is_valid_monthly_working_state,
     refine_monthly_workspace,
 )
 
@@ -94,6 +96,51 @@ def test_build_monthly_export_csv_prefers_valid_working_people_grid():
     assert rows == [["name", "role", date_str], ["Spencer", "staff", "OFF"]]
 
 
+def test_build_monthly_export_csv_accepts_valid_working_state_payload():
+    date_str = "2025-11-05"
+    csv_text = build_monthly_export_csv(
+        {
+            "working_state": build_monthly_working_state(
+                people_grid={
+                    "year_month": "2025-11",
+                    "dates": [date_str],
+                    "rows": [
+                        {
+                            "name": "Spencer",
+                            "role": "staff",
+                            "cells": [{"code": "D", "note": "saved"}],
+                        }
+                    ],
+                },
+                weekly_rest_warnings=[],
+                warnings=["SAVED_WARNING"],
+            )
+        },
+        object(),
+        hooks=_workspace_hooks(build_monthly_preview=_unexpected_hook),
+    )
+
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    assert rows == [["name", "role", date_str], ["Spencer", "staff", "D"]]
+
+
+def test_is_valid_monthly_working_state_requires_people_grid_and_warning_shapes():
+    hooks = _workspace_hooks()
+    valid_state = build_monthly_working_state(
+        people_grid={
+            "year_month": "2025-11",
+            "dates": ["2025-11-05"],
+            "rows": [{"name": "Spencer", "role": "staff", "cells": [{"code": "OFF", "note": ""}]}],
+        },
+        weekly_rest_warnings=[{"type": "weekly_rest"}],
+        warnings=["BASE_WARNING"],
+    )
+
+    assert is_valid_monthly_working_state(valid_state, hooks=hooks) is True
+    assert is_valid_monthly_working_state({"people_grid": {}, "warnings": [1]}, hooks=hooks) is False
+    assert is_valid_monthly_working_state({"people_grid": {}, "weekly_rest_warnings": "bad"}, hooks=hooks) is False
+
+
 def test_refine_monthly_workspace_preserves_success_payload_shape():
     preview_people_grid = {
         "year_month": "2025-11",
@@ -142,3 +189,59 @@ def test_refine_monthly_workspace_preserves_success_payload_shape():
         "shift_metadata": [{"code": "OFF"}],
         "station_metadata": [{"code": "gateau"}],
     }
+
+
+def test_refine_monthly_workspace_uses_provided_working_state_as_base():
+    preview_people_grid = {
+        "year_month": "2025-11",
+        "dates": ["2025-11-05"],
+        "rows": [{"name": "Spencer", "role": "staff", "cells": [{"code": "A", "note": ""}]}],
+    }
+    saved_people_grid = {
+        "year_month": "2025-11",
+        "dates": ["2025-11-05"],
+        "rows": [{"name": "Spencer", "role": "staff", "cells": [{"code": "D", "note": "saved"}]}],
+    }
+    refined_people_grid = {
+        "year_month": "2025-11",
+        "dates": ["2025-11-05"],
+        "rows": [{"name": "Spencer", "role": "staff", "cells": [{"code": "OFF", "note": ""}]}],
+    }
+    working_state = build_monthly_working_state(
+        people_grid=saved_people_grid,
+        weekly_rest_warnings=[],
+        warnings=["SAVED_WARNING"],
+    )
+    scheduling_inputs = SimpleNamespace(station_metadata=object(), shift_metadata=object())
+    observed = {}
+
+    def _apply_refine_operations(base_grid, _ops):
+        observed["base_grid"] = base_grid
+        return (
+            refined_people_grid,
+            [{"action": "set_off", "date": "2025-11-05", "person": "Spencer", "from": {"code": "D"}}],
+            ["REFINE_WARNING"],
+        )
+
+    result = refine_monthly_workspace(
+        scheduling_inputs=scheduling_inputs,
+        year_month="2025-11",
+        start_date="2025-11-01",
+        language="en",
+        refine_text="Spencer 2025-11-05 to OFF",
+        working_state=working_state,
+        hooks=_workspace_hooks(
+            build_monthly_preview=lambda _inputs: {
+                "people_grid": preview_people_grid,
+                "warnings": ["BASE_WARNING"],
+                "shift_metadata": [{"code": "OFF"}],
+                "station_metadata": [{"code": "gateau"}],
+            },
+            parse_refine_text=lambda *_args, **_kwargs: ([{"op": "set_off"}], [], []),
+            apply_refine_operations=_apply_refine_operations,
+        ),
+    )
+
+    assert observed["base_grid"] == saved_people_grid
+    assert result.payload["preview_people_grid"] == refined_people_grid
+    assert result.payload["warnings"] == ["SAVED_WARNING", "REFINE_WARNING"]

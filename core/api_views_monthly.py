@@ -17,7 +17,12 @@ from app.infra.station_metadata import serialize_station_metadata
 from app.generate_week import generate_week, summarize_week
 from app.infra.monthly_scheduling_inputs import build_monthly_scheduling_inputs
 from app.month_service import build_month
-from core import monthly_refine_apply, monthly_refine_parser, monthly_workspace_service
+from core import (
+    monthly_refine_apply,
+    monthly_refine_parser,
+    monthly_workspace_persistence,
+    monthly_workspace_service,
+)
 from core.api_view_helpers import _parse_request_payload
 from core.refine_llm import parse_refine_with_llm
 from core.shift_defs import (
@@ -673,6 +678,53 @@ def api_monthly_export_csv(request):
 
 @csrf_exempt
 @require_http_methods(["POST"])
+def api_monthly_workspace_save(request):
+    payload, payload_err = _parse_request_payload(request)
+    if payload_err:
+        return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    start_date, date_err = _validate_year_month(payload.get("year_month"))
+    if date_err:
+        return JsonResponse({"detail": date_err}, json_dumps_params={"ensure_ascii": False}, status=400)
+    validated_year_month = datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m")
+
+    leave_requests, _, leave_err = _validate_leave_requests(payload.get("leave_requests"))
+    if leave_err:
+        return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
+
+    working_state = payload.get("working_state")
+    if working_state is None:
+        return JsonResponse(
+            {"detail": "Current monthly working state is required to save."},
+            json_dumps_params={"ensure_ascii": False},
+            status=400,
+        )
+    if not monthly_workspace_service.is_valid_monthly_working_state(
+        working_state,
+        hooks=_monthly_workspace_hooks(),
+    ):
+        return JsonResponse(
+            {"detail": "Invalid 'working_state' payload."},
+            json_dumps_params={"ensure_ascii": False},
+            status=400,
+        )
+
+    workspace = monthly_workspace_persistence.save_monthly_workspace(
+        tenant_name="demo_kitchen",
+        year_month=validated_year_month,
+        language=str(payload.get("language") or "ja"),
+        leave_requests=leave_requests,
+        working_state=working_state,
+    )
+    return JsonResponse(
+        {"ok": True, "workspace": workspace},
+        json_dumps_params={"ensure_ascii": False},
+        status=200,
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
 def api_monthly_transcribe(request):
     audio_file = request.FILES.get("audio")
     if audio_file is None:
@@ -718,6 +770,7 @@ def api_monthly_refine_mirror(request):
     language = _normalize_refine_language(payload.get("language") or "ja")
     year_month = str(payload.get("year_month") or "")
     refine_text = str(payload.get("refine_text") or "")
+    working_state = payload.get("working_state")
     scheduling_inputs = build_monthly_scheduling_inputs(
         start_date=start_date,
         language=language,
@@ -732,8 +785,11 @@ def api_monthly_refine_mirror(request):
             start_date=start_date,
             language=language,
             refine_text=refine_text,
+            working_state=working_state,
             hooks=_monthly_workspace_hooks(),
         )
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=400)
     except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
         return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
 

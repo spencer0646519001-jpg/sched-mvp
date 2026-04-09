@@ -17,6 +17,7 @@ from core.api_views_monthly import (
     api_monthly_preview_mirror,
     api_monthly_refine_mirror,
     api_monthly_transcribe,
+    api_monthly_workspace_save,
     api_week_csv_mirror,
     api_week_mirror,
     api_week_summary_mirror,
@@ -64,6 +65,7 @@ urlpatterns = [
     path("monthly/preview", api_monthly_preview_mirror, name="api_monthly_preview_mirror"),
     path("monthly/refine", api_monthly_refine_mirror, name="api_monthly_refine_mirror"),
     path("monthly/export.csv", api_monthly_export_csv, name="api_monthly_export_csv"),
+    path("monthly/workspace/save", api_monthly_workspace_save, name="api_monthly_workspace_save"),
     path("monthly/transcribe", api_monthly_transcribe, name="api_monthly_transcribe"),
 
     # Existing UI under /api/ui/

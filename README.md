@@ -14,7 +14,7 @@ The repo is intentionally honest about its current shape:
 - Generates daily station assignments from demo scheduler inputs in `data/*.json`.
 - Persists daily run history to Django models so runs can be inspected later without overwriting prior same-day runs.
 - Exposes a graph-backed daily explain path that returns assignments, decision trace, explanations, and metrics.
-- Supports monthly preview, refine, and CSV export flows through Django APIs and a lightweight server-rendered UI.
+- Supports monthly preview, refine, save, auto-restore, and CSV export flows through Django APIs and a lightweight server-rendered UI.
 - Uses Django Admin for tenant-scoped modeling and metadata management such as employees, stations, skills, and shift display metadata.
 
 The main reviewer/demo path today is `/ui/monthly`.
@@ -26,8 +26,8 @@ The main reviewer/demo path today is `/ui/monthly`.
 - Canonical scheduler inputs: the demo scheduler still resolves engine inputs from `data/workers.json`, `data/rules.json`, `data/shifts.json`, and `data/calendar.json`.
 - Database role: admin/modeling, metadata overlays, immutable daily run history, and selected read-path support.
 - Not true today: a fully DB-backed scheduler input pipeline.
-- Monthly scheduling model: `JSON engine inputs + DB overlays + request-scoped preview/refine state`.
-- Monthly persistence truth: the current monthly UI supports preview, refine, apply-to-working-state, and export, but it does not persist a monthly plan.
+- Monthly scheduling model: `JSON engine inputs + DB overlays + persisted monthly workspace state`.
+- Monthly persistence truth: the monthly UI persists a tenant/month workspace document for save/restore behavior, but it does not make the database the canonical scheduler input source.
 - Tenant truth: canonical scheduling currently supports only `demo_kitchen`; unsupported tenants fail fast instead of silently reusing demo fixtures.
 - UI truth: the monthly UI is intentionally thin and server-rendered. It reuses Django API views in-process rather than hiding the flow behind a separate frontend runtime.
 
@@ -40,7 +40,7 @@ If you want the short architecture walk-through and source-of-truth decision, se
 
 - JSON remains canonical because it keeps the demo scheduler reproducible and avoids pretending a DB-backed scheduler migration is done when it is not.
 - The database is used where it already adds value: admin surfaces, metadata overlays, daily run persistence, and selected reads.
-- Monthly planning stays request-scoped because preview/refine/export behavior exists today, while durable monthly plan semantics do not.
+- Monthly persistence stays workspace-scoped: the current working document is durable, while scheduler inputs remain JSON-canonical and monthly cells are not normalized into relational rows.
 - FastAPI is still present to reduce migration risk, but it is explicitly not the forward path.
 - The project prioritizes explainability, determinism, and inspectability over optimizer sophistication or polished product surfaces.
 
@@ -140,7 +140,7 @@ This project is not:
 - a fully productionized scheduling platform
 - a fully DB-backed scheduler
 - a true multi-tenant scheduling system beyond the `demo_kitchen` demo tenant
-- a persisted monthly planning system
+- a DB-canonical monthly planning system
 - a polished frontend product or optimization-heavy solver
 
 ## Repo Structure
@@ -154,6 +154,6 @@ This project is not:
 ## Current Limitations
 
 - The canonical scheduler input path is still JSON-backed, so admin data does not yet replace `data/*.json` as the engine source of truth.
-- Monthly refine and apply are preview-oriented; they update request-scoped working state and export behavior, not durable monthly plans.
+- Monthly persistence covers the current workspace document only; it does not imply DB-canonical scheduler inputs or relational monthly planning.
 - Legacy mirror and parity endpoints still exist because the runtime migration is not fully pruned.
 - The strongest tenant semantics today are honesty, not breadth: unsupported tenants fail fast instead of pretending to be supported.

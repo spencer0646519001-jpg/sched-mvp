@@ -41,6 +41,40 @@ class MonthlyRefineResult:
     status_code: int
 
 
+def build_monthly_working_state(*, people_grid, weekly_rest_warnings=None, warnings=None) -> dict | None:
+    if not isinstance(people_grid, dict):
+        return None
+    return {
+        "people_grid": people_grid,
+        "weekly_rest_warnings": list(weekly_rest_warnings or []),
+        "warnings": list(warnings or []),
+    }
+
+
+def is_valid_monthly_working_state(
+    working_state: Any,
+    *,
+    hooks: MonthlyWorkspaceHooks,
+) -> bool:
+    if not isinstance(working_state, dict):
+        return False
+
+    if not hooks.is_valid_monthly_people_grid(working_state.get("people_grid")):
+        return False
+
+    warnings = working_state.get("warnings", [])
+    if not isinstance(warnings, list) or any(not isinstance(item, str) for item in warnings):
+        return False
+
+    weekly_rest_warnings = working_state.get("weekly_rest_warnings", [])
+    if not isinstance(weekly_rest_warnings, list):
+        return False
+    if any(not isinstance(item, dict) for item in weekly_rest_warnings):
+        return False
+
+    return True
+
+
 def build_monthly_preview(scheduling_inputs: Any, *, hooks: MonthlyPreviewHooks) -> dict:
     """Build the canonical monthly preview from the shared scheduling input contract."""
     month_state = hooks.generate_month_state_with_leave_requests(
@@ -62,6 +96,12 @@ def resolve_monthly_export_people_grid(
     *,
     hooks: MonthlyWorkspaceHooks,
 ) -> dict:
+    working_state = payload.get("working_state")
+    if working_state is not None:
+        if not is_valid_monthly_working_state(working_state, hooks=hooks):
+            raise ValueError("Invalid 'working_state' payload.")
+        return dict(working_state.get("people_grid") or {})
+
     # The monthly demo UI can carry a newer request-scoped working grid after
     # refine/apply. Export should consume that same effective state when present,
     # while still falling back to rebuilding the baseline preview for older callers.
@@ -105,12 +145,21 @@ def refine_monthly_workspace(
     start_date: str,
     language: str,
     refine_text: str,
+    working_state: dict | None = None,
     hooks: MonthlyWorkspaceHooks,
 ) -> MonthlyRefineResult:
     # Current monthly demo path: build a request-scoped preview from JSON-backed
     # engine inputs plus request leave overrides. No monthly plan is persisted here.
     preview = hooks.build_monthly_preview(scheduling_inputs)
-    people_grid = preview.get("people_grid", {})
+    if working_state is not None and not is_valid_monthly_working_state(working_state, hooks=hooks):
+        raise ValueError("Invalid 'working_state' payload.")
+
+    if working_state is not None:
+        people_grid = dict(working_state.get("people_grid") or {})
+        warnings = list(working_state.get("warnings", []) or [])
+    else:
+        people_grid = preview.get("people_grid", {})
+        warnings = list(preview.get("warnings", []) or [])
     station_metadata = getattr(scheduling_inputs, "station_metadata", None)
     shift_metadata = getattr(scheduling_inputs, "shift_metadata", None)
 
@@ -182,7 +231,6 @@ def refine_monthly_workspace(
         station_metadata=station_metadata,
     )
 
-    warnings = list(preview.get("warnings", []) or [])
     warnings.extend(parse_warnings)
     warnings.extend(refine_warnings)
     weekly_rest_warnings = hooks.build_weekly_rest_warnings_from_people_grid(preview_people_grid)
