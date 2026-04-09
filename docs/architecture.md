@@ -8,7 +8,10 @@ This repository is a hiring-portfolio scheduling MVP for explainable kitchen sta
 
 - The canonical backend runtime is Django.
 - The live entrypoints are `manage.py`, `config/asgi.py`, and `config/wsgi.py`.
+- The canonical container server path now runs `uvicorn config.asgi:application` against Django's ASGI app.
+- Runtime defaults are intentionally small and env-driven from one settings module: `DJANGO_DEBUG`, `DJANGO_SECRET_KEY`, and `DJANGO_ALLOWED_HOSTS`.
 - Django routes are wired through `config/urls.py` into canonical `core/api_urls.py`, quarantined legacy `core/api_urls_legacy.py`, and `core/ui_views.py`.
+- In debug/demo mode, `config/asgi.py` wraps Django with the built-in ASGI static-files handler so `/ui/monthly` and admin assets still render under `uvicorn` without adding a production static stack.
 
 ## Main Monthly Demo Flow Today
 
@@ -64,6 +67,7 @@ Current flow:
 ## Near-Term Direction
 
 - Keep Django as the only canonical runtime surface.
+- Keep runtime hardening honest: env-driven defaults and an ASGI container path are in scope; reverse proxies, cloud infra, and production-theater settings are not.
 - Keep the repo explicit that the demo scheduler is JSON-canonical until a real scheduler-input migration happens.
 - Continue shrinking or labeling parity/legacy HTTP surfaces instead of presenting them as a clean target architecture.
 - Either move canonical engine inputs onto DB-backed loaders or continue to treat `data/*.json` as explicit demo fixtures until that migration is actually complete.

@@ -12,4 +12,4 @@ COPY . /app
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python manage.py migrate && python manage.py seed_demo && python manage.py runserver 0.0.0.0:8000"]
+CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py seed_demo && uvicorn config.asgi:application --host 0.0.0.0 --port 8000"]

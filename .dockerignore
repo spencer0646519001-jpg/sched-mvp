@@ -1,9 +1,10 @@
 .git
 .venv
+.env
 .pytest_cache
 __pycache__
 *.pyc
 *.pyo
 *.pyd
 db.sqlite3
-state/bootstrap-smoke-*
+state/

@@ -4,11 +4,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DJANGO_SETTINGS_MODULE=config.settings
-      - ALLOWED_HOSTS=127.0.0.1,localhost,0.0.0.0,web
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_REFINE_MODEL=${OPENAI_REFINE_MODEL}
+      DJANGO_SETTINGS_MODULE: config.settings
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-127.0.0.1,localhost,0.0.0.0,web}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_REFINE_MODEL: ${OPENAI_REFINE_MODEL:-}
     volumes:
       - .:/app
       - ./db.sqlite3:/app/db.sqlite3
-    command: sh -c "python manage.py migrate && python manage.py seed_demo && python manage.py runserver 0.0.0.0:8000"

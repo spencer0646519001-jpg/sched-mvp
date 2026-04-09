@@ -22,6 +22,7 @@ The main reviewer/demo path today is `/ui/monthly`.
 ## Current Architecture Truth
 
 - Canonical runtime: Django via `manage.py`, `config.asgi`, and `config.wsgi`.
+- Canonical container server: Docker now runs Django through `uvicorn config.asgi:application`, not `manage.py runserver`.
 - Legacy runtime: `app/main.py` and `app/api_*.py` FastAPI routes are rollback-only and feature-frozen.
 - Canonical Django routes stay under `/api/...`; retained Django compatibility/parity routes are grouped under `/api/legacy/...`.
 - Canonical scheduler inputs: the demo scheduler still resolves engine inputs from `data/workers.json`, `data/rules.json`, `data/shifts.json`, and `data/calendar.json`.
@@ -74,6 +75,11 @@ python manage.py runserver 0.0.0.0:8000
 
 Notes:
 
+- Runtime defaults are now env-driven from the single Django settings module: `DJANGO_DEBUG`, `DJANGO_SECRET_KEY`, and `DJANGO_ALLOWED_HOSTS`.
+- Bare local development can keep using `manage.py runserver`; set `DJANGO_DEBUG=1` when you want the usual debug/static-file behavior.
+- If `DJANGO_SECRET_KEY` is unset, Django falls back to an ephemeral per-process secret that is acceptable for one-off local work but not ideal for shared or restart-sensitive demos.
+- `DJANGO_ALLOWED_HOSTS` defaults to local-only hosts. The settings file also accepts legacy `ALLOWED_HOSTS` for compatibility.
+- See `.env.example` for the supported runtime variables. Docker Compose reads `.env` automatically; plain `python manage.py ...` usage still relies on normal shell environment variables.
 - `seed_demo` idempotently creates the `demo_kitchen` tenant plus the minimal canonical persistence fixtures used by the daily-run history path: 4 stations and the 12-person demo roster from `data/workers.json`.
 - The monthly demo flow is JSON-canonical, so it does not depend on the database being the scheduler source of truth.
 - The persisted daily-run write path is still driven by JSON-backed scheduler inputs; `seed_demo` only bootstraps the DB rows that path needs to save immutable run history on a fresh database.
@@ -92,7 +98,13 @@ Useful URLs:
 docker compose up --build
 ```
 
-Docker is for local dev/demo runtime. The Dockerfile uses Python 3.13 and the same Django path as local development: migrate, seed the demo tenant, then run `manage.py runserver`.
+Docker is for local dev/demo runtime. The Dockerfile still runs `migrate` and `seed_demo` for convenience, then starts the canonical Django ASGI app with `uvicorn config.asgi:application`.
+
+Docker notes:
+
+- Compose defaults `DJANGO_DEBUG=1` so the repo's debug/demo container continues to serve CSS/admin assets through Django's built-in ASGI static-files handler.
+- Compose exposes `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, and the optional OpenAI vars as the small runtime contract for the container path.
+- This is still not a production deployment recipe. The repo does not add a reverse proxy, TLS, hardened cookie settings, or a production static-files stack in PR4.
 
 ### Legacy FastAPI Surface
 
@@ -119,6 +131,8 @@ Testing notes:
 - `python -m pytest -q` is the default suite and the recommended day-to-day path.
 - `python -m pytest -q -m legacy` is for manual or release-time parity checks against the legacy FastAPI surface.
 - `pytest.ini` excludes legacy tests from the default run.
+- `python manage.py check --deploy` is useful as an honesty check when you set `DJANGO_DEBUG=0` and an explicit `DJANGO_SECRET_KEY`, but it is not treated as proof that this repo is production-ready.
+- Some `check --deploy` warnings remain expected because this repo intentionally does not ship HTTPS, reverse-proxy, or secure-cookie infrastructure.
 - CI runs the default suite in a fresh environment after installing dependencies and applying migrations.
 
 Current CI path in `.github/workflows/tests.yml`:
@@ -160,3 +174,4 @@ This project is not:
 - Monthly persistence covers the current workspace document only; it does not imply DB-canonical scheduler inputs or relational monthly planning.
 - Legacy mirror and parity endpoints still exist because the runtime migration is not fully pruned, but Django now quarantines them under `/api/legacy/...`.
 - The strongest tenant semantics today are honesty, not breadth: unsupported tenants fail fast instead of pretending to be supported.
+- Runtime hardening in PR4 removes the most obvious tutorial-default smells, but the repo still does not present itself as a production deployment stack.
