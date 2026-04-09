@@ -137,6 +137,26 @@ Default local test path:
 python -m pytest -q
 ```
 
+Reviewer-facing evaluation harness:
+
+```bash
+python -m pytest -q test/test_monthly_eval_story.py
+```
+
+This small eval story is intentionally offline and reproducible. It measures:
+
+- rule-based refine contract on a frozen success case
+- `working_state` precedence during refine
+- offline LLM fallback success and failure classification via stubbed responses
+- supporting scheduling invariants: repeatable monthly preview output and no daily-scheduler contamination from monthly preview
+
+It does not measure:
+
+- live model quality, latency, or cost
+- benchmark scores or pass-rate dashboards
+- prompt tuning quality
+- end-to-end UI workflow coverage
+
 Legacy parity tests:
 
 ```bash
