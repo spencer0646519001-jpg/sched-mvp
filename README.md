@@ -93,6 +93,22 @@ Useful URLs:
 - `http://127.0.0.1:8000/api/tenants/demo_kitchen/daily-runs-graph/` - graph/explain daily run API
 - `http://127.0.0.1:8000/admin/` - admin/modeling surfaces
 
+### Generated CLI Outputs
+
+The standalone CLI helpers write generated files under `state/` by default so the repo root stays clean:
+
+```bash
+python -m app.generate_week 2025-11-10
+python -m app.generate_month 2025-11
+```
+
+Default outputs:
+
+- `state/week.csv`
+- `state/month_YYYY-MM.json`
+
+Use `--out` only when you want a one-off override for a different path.
+
 ### Docker
 
 ```bash

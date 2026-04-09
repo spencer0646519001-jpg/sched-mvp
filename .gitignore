@@ -5,6 +5,9 @@ __pycache__/
 *.db
 db.sqlite3
 state/
+week.csv
+month_*.json
+month_*.csv
 db.sqlite3.bak
 tmp_monthly_preview.json
 tmp_monthly_preview_raw.json

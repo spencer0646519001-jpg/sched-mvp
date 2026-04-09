@@ -21,6 +21,9 @@ from pathlib import Path
 if TYPE_CHECKING:
     from app.generate_day import EngineInputs
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_WEEK_OUTPUT = ROOT_DIR / "state" / "week.csv"
+
 
 def load_rules():
     rules_file = Path(__file__).parent.parent / "data" / "rules.json"
@@ -236,7 +239,10 @@ def print_week_summary(state: dict, start_date_str: str, num_days: int) -> None:
         )
 
 
-def save_week_csv(state: dict, out_path="week.csv"):
+def save_week_csv(state: dict, out_path: str | Path | None = None) -> Path:
+    out_path = Path(out_path) if out_path is not None else DEFAULT_WEEK_OUTPUT
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
     rows = []
     for date, plan in state["week_plan"].items():
         for station, assignments in plan["assignments"].items():
@@ -267,6 +273,8 @@ def save_week_csv(state: dict, out_path="week.csv"):
         writer.writeheader()
         writer.writerows(rows)
 
+    return out_path
+
 
 # -------- CLI --------
 if __name__ == "__main__":
@@ -278,11 +286,15 @@ if __name__ == "__main__":
         default=7,
         help="Number of days to generate (default: 7)",
     )
+    ap.add_argument(
+        "--out",
+        help="Output CSV path (default: state/week.csv)",
+    )
     args = ap.parse_args()
 
     week_state = generate_week(args.start_date, num_days=args.days, prev_state=None)
-    save_week_csv(week_state, out_path="week.csv")
-    print("Saved week.csv !")
+    out_path = save_week_csv(week_state, out_path=args.out)
+    print(f"Saved {out_path} !")
 
     print(json.dumps(week_state["week_plan"], ensure_ascii=False, indent=2))
 
