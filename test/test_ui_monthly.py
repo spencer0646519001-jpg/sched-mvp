@@ -68,13 +68,12 @@ def _delete_workspace(year_month: str) -> None:
     ).delete()
 
 
-def _save_workspace(*, year_month: str, language: str, leave_requests: dict, working_state: dict) -> None:
+def _save_workspace(*, year_month: str, leave_requests: dict, working_state: dict) -> None:
     from core.monthly_workspace_persistence import save_monthly_workspace
 
     save_monthly_workspace(
         tenant_name="demo_kitchen",
         year_month=year_month,
-        language=language,
         leave_requests=leave_requests,
         working_state=working_state,
     )
@@ -98,7 +97,8 @@ def test_ui_monthly_get_renders():
     assert response.status_code == 200
     body = response.content.decode("utf-8")
     assert '<form method="post" id="monthly-form" class="grid-layout">' in body
-    assert re.search(r'<input[^>]*name="language"[^>]*value="en"', body)
+    assert 'name="language"' not in body
+    assert 'class="lang-btn"' not in body
     assert '/api/tenants/demo_kitchen/daily-runs-graph/' in body
     assert re.search(r'<textarea[^>]*name="refine_text"[^>]*>', body)
     assert "Masuda on 2026-03-12 should be OFF" in body
@@ -115,7 +115,6 @@ def test_ui_monthly_get_auto_hydrates_saved_workspace_without_load_button():
 
     _save_workspace(
         year_month="2040-04",
-        language="en",
         leave_requests={"Spencer": ["2040-04-05"]},
         working_state=_saved_working_state(
             year_month="2040-04",
@@ -250,7 +249,7 @@ def test_ui_monthly_preview_renders_db_backed_shift_legend(monkeypatch):
     assert "Morning Prep shift" in body
 
 
-def test_ui_monthly_language_switch_label_on_post():
+def test_ui_monthly_post_keeps_english_labels():
     _django_setup()
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
         client = Client()
@@ -267,7 +266,7 @@ def test_ui_monthly_language_switch_label_on_post():
 
     assert response.status_code == 200
     body = response.content.decode("utf-8")
-    assert re.search(r'<input[^>]*name="language"[^>]*value="en"', body)
+    assert 'name="language"' not in body
     assert re.search(r'<button[^>]*value="download"[^>]*>\s*Export CSV\s*</button>', body)
     assert re.search(r'<h2[^>]*>\s*People Grid\s*</h2>', body)
 
@@ -292,7 +291,7 @@ def test_ui_monthly_explain_js_has_error_fallback_message():
 
     assert response.status_code == 200
     body = response.content.decode("utf-8")
-    assert 'const fallback = getT(currentLanguage, "explain_unavailable");' in body
+    assert 'const fallback = getT("explain_unavailable");' in body
     assert "explainOutput.innerHTML = '<p class=\"subtle\">' + fallback + detail + \"</p>\";" in body
 
 
@@ -353,43 +352,29 @@ def test_ui_monthly_voice_input_has_unsupported_fallback_path():
     assert "Voice recognition failed." in body
 
 
-def test_ui_monthly_voice_copy_stays_clean_for_ja_zh_en():
+def test_ui_monthly_voice_copy_stays_clean_for_english_only_path():
     _django_setup()
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
         client = Client()
-        ja_resp = client.get("/ui/monthly?language=ja")
-        zh_resp = client.post(
+        get_resp = client.get("/ui/monthly")
+        preview_resp = client.post(
             "/ui/monthly",
             data={
                 "year_month": "2025-11",
-                "language": "zh",
-                "leave_requests": "{}",
-                "action": "preview",
-            },
-            follow=True,
-        )
-        en_resp = client.post(
-            "/ui/monthly",
-            data={
-                "year_month": "2025-11",
-                "language": "en",
                 "leave_requests": "{}",
                 "action": "preview",
             },
             follow=True,
         )
 
-    assert ja_resp.status_code == 200
-    assert zh_resp.status_code == 200
-    assert en_resp.status_code == 200
+    assert get_resp.status_code == 200
+    assert preview_resp.status_code == 200
 
-    ja_body = ja_resp.content.decode("utf-8")
-    zh_body = zh_resp.content.decode("utf-8")
-    en_body = en_resp.content.decode("utf-8")
+    get_body = get_resp.content.decode("utf-8")
+    preview_body = preview_resp.content.decode("utf-8")
 
-    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*Voice Input\s*</button>', ja_body)
-    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*Voice Input\s*</button>', zh_body)
-    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*Voice Input\s*</button>', en_body)
+    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*Voice Input\s*</button>', get_body)
+    assert re.search(r'<button[^>]*id="voice-toggle"[^>]*>\s*Voice Input\s*</button>', preview_body)
 
 
 def test_ui_monthly_download_post_returns_csv():
@@ -400,7 +385,6 @@ def test_ui_monthly_download_post_returns_csv():
             "/ui/monthly",
             data={
                 "year_month": "2025-11",
-                "language": "ja",
                 "leave_requests": "{}",
                 "action": "download",
             },
@@ -652,7 +636,6 @@ def test_ui_monthly_preview_after_saved_workspace_only_changes_visible_state_unt
     date_str = "2040-09-01"
     _save_workspace(
         year_month="2040-09",
-        language="en",
         leave_requests={},
         working_state=_saved_working_state(
             year_month="2040-09",
@@ -720,7 +703,6 @@ def test_ui_monthly_refine_after_auto_hydrate_uses_saved_working_state(monkeypat
     date_str = "2040-07-05"
     _save_workspace(
         year_month="2040-07",
-        language="en",
         leave_requests={},
         working_state=_saved_working_state(
             year_month="2040-07",
@@ -780,7 +762,6 @@ def test_ui_monthly_export_after_auto_hydrate_uses_saved_working_state():
     date_str = "2040-08-05"
     _save_workspace(
         year_month="2040-08",
-        language="en",
         leave_requests={},
         working_state=_saved_working_state(
             year_month="2040-08",
@@ -878,44 +859,30 @@ def test_ui_monthly_refine_preview_renders_db_station_label_in_diff(monkeypatch)
     assert re.search(r"Gateau Counter\s*/\s*gateau", body)
 
 
-def test_ui_monthly_refine_action_copy_stays_clean_for_ja_zh_en():
+def test_ui_monthly_refine_action_copy_stays_clean_for_english_only_path():
     _django_setup()
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
         client = Client()
 
-        ja_resp = client.get("/ui/monthly?language=ja")
-        en_resp = client.post(
+        get_resp = client.get("/ui/monthly")
+        preview_resp = client.post(
             "/ui/monthly",
             data={
                 "year_month": "2025-11",
-                "language": "en",
-                "leave_requests": "{}",
-                "action": "preview",
-            },
-            follow=True,
-        )
-        zh_resp = client.post(
-            "/ui/monthly",
-            data={
-                "year_month": "2025-11",
-                "language": "zh",
                 "leave_requests": "{}",
                 "action": "preview",
             },
             follow=True,
         )
 
-    assert ja_resp.status_code == 200
-    assert en_resp.status_code == 200
-    assert zh_resp.status_code == 200
+    assert get_resp.status_code == 200
+    assert preview_resp.status_code == 200
 
-    ja_body = ja_resp.content.decode("utf-8")
-    en_body = en_resp.content.decode("utf-8")
-    zh_body = zh_resp.content.decode("utf-8")
+    get_body = get_resp.content.decode("utf-8")
+    preview_body = preview_resp.content.decode("utf-8")
 
-    assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*Refine Preview\s*</button>', ja_body)
-    assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*Refine Preview\s*</button>', en_body)
-    assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*Refine Preview\s*</button>', zh_body)
+    assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*Refine Preview\s*</button>', get_body)
+    assert re.search(r'<button[^>]*value="refine_preview"[^>]*>\s*Refine Preview\s*</button>', preview_body)
 
 def test_ui_monthly_refine_preview_shows_fallback_parse_error(monkeypatch):
     _django_setup()

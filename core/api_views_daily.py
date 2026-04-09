@@ -335,9 +335,7 @@ def create_daily_run_graph(request, tenant_name: str):
     )
     if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
-    language = str(payload.get("language") or "en").strip().lower()
-    if language not in {"ja", "en", "zh"}:
-        language = "en"
+    language = "en"
 
     try:
         require_supported_engine_input_tenant(tenant_name)

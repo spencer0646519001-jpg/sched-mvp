@@ -11,7 +11,7 @@
   <main class="page-shell">
     <header class="hero">
       <h1 data-i18n="page_title">{{ t.page_title }}</h1>
-      <p><span data-i18n="hero_desc">{{ t.hero_desc }}</span> <code>{year_month, language, leave_requests, refine_text}</code>.</p>
+      <p><span data-i18n="hero_desc">{{ t.hero_desc }}</span> <code>{year_month, leave_requests, refine_text}</code>.</p>
     </header>
 
     <form method="post" id="monthly-form" class="grid-layout">
@@ -23,15 +23,6 @@
           <div class="field">
             <label for="year_month" data-i18n="year_month">{{ t.year_month }}</label>
             <input id="year_month" name="year_month" type="month" value="{{ year_month }}" required />
-          </div>
-          <div class="field">
-            <label data-i18n="language">{{ t.language }}</label>
-            <div class="lang-toggle" role="group" aria-label="language">
-              <button type="button" class="lang-btn" data-lang="en">en</button>
-              <button type="button" class="lang-btn" data-lang="ja">ja</button>
-              <button type="button" class="lang-btn" data-lang="zh">zh</button>
-            </div>
-            <input id="language" name="language" type="hidden" value="{{ language|default:'en' }}" />
           </div>
         </div>
       </section>
@@ -295,15 +286,13 @@
 
   <script>
     (function () {
-      const translations = {{ ui_translations_json|safe }};
+      const strings = {{ ui_strings_json|safe }};
       const form = document.getElementById("monthly-form");
       const leaveField = document.getElementById("leave_requests");
       const leavePerson = document.getElementById("leave_person");
       const leaveDate = document.getElementById("leave_date");
       const addLeaveBtn = document.getElementById("add-leave");
       const chipsWrap = document.getElementById("leave-chips");
-      const languageInput = document.getElementById("language");
-      const langButtons = Array.from(document.querySelectorAll(".lang-btn"));
       const explainDateInput = document.getElementById("explain_date");
       const explainBtn = document.getElementById("generate-explain");
       const explainStatus = document.getElementById("explain-status");
@@ -316,7 +305,6 @@
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
       let leaveRequests = {};
-      let currentLanguage = languageInput.value || "en";
       let recognition = null;
       let mediaRecorder = null;
       let mediaStream = null;
@@ -324,18 +312,11 @@
       let voiceListening = false;
       let voiceMessageKey = "";
 
-      function getT(lang, key) {
-        const selected = translations[lang] || translations.en || {};
-        return selected[key] || (translations.en || {})[key] || key;
+      function getT(key) {
+        return strings[key] || key;
       }
 
-      function voiceLocaleForLanguage(lang) {
-        if (lang === "ja") {
-          return "ja-JP";
-        }
-        if (lang === "zh") {
-          return "zh-TW";
-        }
+      function voiceLocale() {
         return "en-US";
       }
 
@@ -344,7 +325,7 @@
           return;
         }
         voiceMessageKey = key || "";
-        voiceMessage.textContent = voiceMessageKey ? getT(currentLanguage, voiceMessageKey) : "";
+        voiceMessage.textContent = voiceMessageKey ? getT(voiceMessageKey) : "";
       }
 
       function setVoiceState(state, messageKey) {
@@ -362,9 +343,9 @@
         const btnKey = state === "listening" ? "stop" : "voice_input";
         voiceStatus.dataset.status = state;
         voiceStatus.dataset.i18n = statusKey;
-        voiceStatus.textContent = getT(currentLanguage, statusKey);
+        voiceStatus.textContent = getT(statusKey);
         voiceToggleBtn.dataset.i18n = btnKey;
-        voiceToggleBtn.textContent = getT(currentLanguage, btnKey);
+        voiceToggleBtn.textContent = getT(btnKey);
         voiceToggleBtn.disabled = state === "transcribing";
         setVoiceMessage(messageKey || "");
       }
@@ -401,7 +382,7 @@
         }
 
         recognition = new SpeechRecognition();
-        recognition.lang = voiceLocaleForLanguage(currentLanguage);
+        recognition.lang = voiceLocale();
         recognition.interimResults = false;
         recognition.continuous = false;
         recognition.maxAlternatives = 1;
@@ -438,7 +419,7 @@
           return false;
         }
         try {
-          speech.lang = voiceLocaleForLanguage(currentLanguage);
+          speech.lang = voiceLocale();
           setVoiceState("listening", messageKey || "listening");
           speech.start();
           return true;
@@ -451,7 +432,6 @@
       async function requestServerTranscription(blob) {
         const formData = new FormData();
         formData.append("audio", blob, "monthly_refine_recording.webm");
-        formData.append("language", currentLanguage);
 
         try {
           const response = await fetch("/api/monthly/transcribe", {
@@ -537,18 +517,17 @@
         setVoiceState("idle", "");
       }
 
-      function applyLanguageText(lang) {
-        currentLanguage = translations[lang] ? lang : "en";
+      function applyEnglishText() {
         document.querySelectorAll("[data-i18n]").forEach(function (node) {
           const key = node.dataset.i18n;
-          node.textContent = getT(currentLanguage, key);
+          node.textContent = getT(key);
         });
-        document.title = getT(currentLanguage, "page_title");
+        document.title = getT("page_title");
         if (voiceMessageKey) {
           setVoiceMessage(voiceMessageKey);
         }
         if (recognition) {
-          recognition.lang = voiceLocaleForLanguage(currentLanguage);
+          recognition.lang = voiceLocale();
         }
       }
 
@@ -586,7 +565,7 @@
         chipsWrap.innerHTML = "";
         const people = Object.keys(leaveRequests).sort();
         if (!people.length) {
-          chipsWrap.innerHTML = '<p class="subtle">' + getT(currentLanguage, "no_leave_selected") + "</p>";
+          chipsWrap.innerHTML = '<p class="subtle">' + getT("no_leave_selected") + "</p>";
           return;
         }
 
@@ -624,12 +603,6 @@
           });
 
           chipsWrap.appendChild(row);
-        });
-      }
-
-      function setLanguageActive(lang) {
-        langButtons.forEach(function (btn) {
-          btn.classList.toggle("is-active", btn.dataset.lang === lang);
         });
       }
 
@@ -757,7 +730,7 @@
 
         const unavailable = document.createElement("p");
         unavailable.className = "subtle";
-        unavailable.textContent = getT(currentLanguage, "explain_unavailable");
+        unavailable.textContent = getT("explain_unavailable");
         wrapper.appendChild(unavailable);
         return wrapper;
       }
@@ -788,16 +761,6 @@
 
         setVoiceState("idle", "");
       }
-
-      langButtons.forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          languageInput.value = btn.dataset.lang;
-          setLanguageActive(languageInput.value);
-          applyLanguageText(languageInput.value);
-          renderLeaveChips();
-        });
-      });
-
       addLeaveBtn.addEventListener("click", function () {
         const person = (leavePerson.value || "").trim();
         const day = (leaveDate.value || "").trim();
@@ -817,16 +780,16 @@
       explainBtn.addEventListener("click", async function () {
         const targetDate = explainDateInput.value || defaultExplainDate();
         if (!targetDate) {
-          explainStatus.textContent = getT(currentLanguage, "explain_choose_valid_date");
+          explainStatus.textContent = getT("explain_choose_valid_date");
           return;
         }
 
-        const body = { date: targetDate, language: currentLanguage };
+        const body = { date: targetDate };
         const absent = absentForDate(targetDate);
         if (absent.length) {
           body.absent = absent;
         }
-        explainStatus.textContent = getT(currentLanguage, "generating_explanation");
+        explainStatus.textContent = getT("generating_explanation");
         explainOutput.innerHTML = "";
 
         try {
@@ -840,10 +803,10 @@
             const detail = (payload && (payload.detail || ((payload.error || {}).message))) || "";
             throw new Error(detail || "endpoint_error");
           }
-          explainStatus.textContent = getT(currentLanguage, "explanation_generated_for") + targetDate + ".";
+          explainStatus.textContent = getT("explanation_generated_for") + targetDate + ".";
           explainOutput.appendChild(renderExplainPayload(payload));
         } catch (error) {
-          const fallback = getT(currentLanguage, "explain_unavailable");
+          const fallback = getT("explain_unavailable");
           const detail = (error && error.message && error.message !== "endpoint_error") ? (" (" + error.message + ")") : "";
           explainStatus.textContent = fallback;
           explainOutput.innerHTML = '<p class="subtle">' + fallback + detail + "</p>";
@@ -854,8 +817,7 @@
 
       safeParseLeave();
       syncLeaveField();
-      setLanguageActive(languageInput.value || "en");
-      applyLanguageText(languageInput.value || "en");
+      applyEnglishText();
       initVoiceInput();
       renderLeaveChips();
 

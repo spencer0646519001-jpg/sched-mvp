@@ -103,7 +103,7 @@ def _load_api_views_unit(monkeypatch):
     monthly_inputs = types.ModuleType("app.infra.monthly_scheduling_inputs")
     monthly_inputs.build_monthly_scheduling_inputs = lambda **kwargs: types.SimpleNamespace(
         start_date=kwargs.get("start_date", ""),
-        language=kwargs.get("language", "ja"),
+        language=kwargs.get("language", "en"),
         leave_requests=kwargs.get("leave_requests", {}),
         leave_by_date=kwargs.get("leave_by_date", {}),
         engine_inputs=None,

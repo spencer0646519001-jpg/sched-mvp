@@ -121,7 +121,7 @@ def test_monthly_scheduling_inputs_uses_shared_tenant_resolver(monkeypatch):
 
     result = monthly_inputs.build_monthly_scheduling_inputs(
         start_date="2025-11-01",
-        language="ja",
+        language="en",
         leave_requests={},
         leave_by_date={},
         tenant_name="demo_kitchen",

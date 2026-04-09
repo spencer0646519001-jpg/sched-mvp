@@ -157,7 +157,6 @@ class MonthlyWorkspace(TimeStampedModel):
         Tenant, on_delete=models.CASCADE, related_name="monthly_workspaces"
     )
     year_month = models.CharField(max_length=7)
-    language = models.CharField(max_length=8, default="ja")
     leave_requests = models.JSONField(default=dict, blank=True)
     working_state = models.JSONField(default=dict, blank=True)
     revision = models.PositiveIntegerField(default=1)
@@ -170,7 +169,7 @@ class MonthlyWorkspace(TimeStampedModel):
             )
         ]
         indexes = [
-            models.Index(fields=["tenant", "year_month"]),
+            models.Index(fields=["tenant", "year_month"], name="core_monthl_tenant__a3092f_idx"),
         ]
 
     def __str__(self) -> str:

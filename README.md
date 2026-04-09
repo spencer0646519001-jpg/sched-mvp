@@ -31,7 +31,8 @@ The main reviewer/demo path today is `/ui/monthly`.
 - Monthly scheduling model: `JSON engine inputs + DB overlays + persisted monthly workspace state`.
 - Monthly persistence truth: the monthly UI persists a tenant/month workspace document for save/restore behavior, but it does not make the database the canonical scheduler input source.
 - Tenant truth: canonical scheduling currently supports only `demo_kitchen`; unsupported tenants fail fast instead of silently reusing demo fixtures.
-- UI truth: the monthly UI is intentionally thin and server-rendered. It reuses Django API views in-process rather than hiding the flow behind a separate frontend runtime.
+- UI truth: the monthly UI is intentionally thin, server-rendered, and English-only. It reuses Django API views in-process rather than hiding the flow behind a separate frontend runtime.
+- Language truth: reviewer-facing monthly/demo flows now treat English as the only supported language contract; legacy `language` inputs are ignored rather than persisted or surfaced as fake multilingual support.
 
 If you want the short architecture walk-through and source-of-truth decision, see:
 

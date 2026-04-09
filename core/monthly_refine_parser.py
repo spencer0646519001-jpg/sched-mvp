@@ -245,7 +245,7 @@ def _refine_parse_error(line: str, code: str, message: str) -> dict:
     }
 
 
-_REFINE_LANGUAGES = {"ja", "zh", "en"}
+_REFINE_LANGUAGES = {"en"}
 
 _REFINE_PARSE_I18N = {
     "ja": {
@@ -317,15 +317,11 @@ _LLM_ERROR_CODE_TO_PARSE_CODE = {
 
 
 def _normalize_refine_language(language: str) -> str:
-    lang = str(language or "ja").strip().lower()
-    if lang not in _REFINE_LANGUAGES:
-        return "ja"
-    return lang
+    return "en"
 
 
 def _refine_error_message(language: str, code: str) -> str:
-    lang = _normalize_refine_language(language)
-    table = _REFINE_PARSE_I18N.get(lang) or _REFINE_PARSE_I18N["en"]
+    table = _REFINE_PARSE_I18N["en"]
     return table.get(code) or table.get("parse_failed") or "Refine parse failed"
 
 

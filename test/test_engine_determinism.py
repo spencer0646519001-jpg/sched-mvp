@@ -34,7 +34,7 @@ def test_daily_scheduler_is_not_contaminated_by_monthly_preview():
 
     payload = {
         "year_month": "2025-11",
-        "language": "ja",
+        "language": "en",
         "leave_requests": {},
     }
 
@@ -58,7 +58,7 @@ def test_monthly_preview_people_grid_is_repeatable_for_same_request():
 
     payload = {
         "year_month": "2025-11",
-        "language": "ja",
+        "language": "en",
         "leave_requests": {
             "Spencer": ["2025-11-05"],
         },

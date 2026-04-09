@@ -38,7 +38,6 @@ MONTHLY_UI_ENGLISH_TEXT = {
     "hero_desc": "Preview and export use the same payload:",
     "controls": "Controls",
     "year_month": "Year Month",
-    "language": "Language",
     "leave_requests": "Leave Requests",
     "leave_help": "Select person + date, then add. Each date becomes OFF in preview/export.",
     "person": "Person",
@@ -86,19 +85,10 @@ MONTHLY_UI_ENGLISH_TEXT = {
     "explain_unavailable": "Explain currently unavailable.",
 }
 
-# Keep the existing selector values for compatibility, but serve one clean
-# English-first monthly UI copy pack so reviewer-visible text never falls back
-# to mixed or broken strings.
-UI_TRANSLATIONS = {
-    lang: dict(MONTHLY_UI_ENGLISH_TEXT)
-    for lang in ("en", "ja", "zh")
-}
-
 
 MONTHLY_UI_TRANSIENT_STATE_SESSION_KEY = "ui_monthly_transient_state"
 MONTHLY_UI_NOTICE_SESSION_KEY = "ui_monthly_notice"
 MONTHLY_UI_TRANSIENT_STATE_FIELDS = (
-    "language",
     "leave_requests_raw",
     "refine_text",
     "refine_preview_json",
@@ -128,25 +118,12 @@ MONTHLY_VOICE_ENGLISH_TEXT = {
     "voice_recording_unsupported_fallback": "Audio recording unsupported. Falling back to browser speech recognition.",
 }
 
-VOICE_UI_TRANSLATIONS = {
-    lang: dict(MONTHLY_VOICE_ENGLISH_TEXT)
-    for lang in ("en", "ja", "zh")
-}
+def _voice_translation_pack() -> dict:
+    return dict(MONTHLY_VOICE_ENGLISH_TEXT)
 
 
-def _voice_translation_pack(language: str) -> dict:
-    merged = dict(VOICE_UI_TRANSLATIONS["en"])
-    merged.update(VOICE_UI_TRANSLATIONS.get(language, {}))
-    return merged
-
-
-def _translation_pack(language: str) -> dict:
-    lang = language if language in UI_TRANSLATIONS else "en"
-    return {
-        "lang": lang,
-        "t": UI_TRANSLATIONS[lang],
-        "translations_json": json.dumps(UI_TRANSLATIONS, ensure_ascii=False),
-    }
+def _translation_pack() -> dict:
+    return {"t": dict(MONTHLY_UI_ENGLISH_TEXT)}
 
 
 def _parse_monthly_working_state(raw_json: str) -> dict:
@@ -157,10 +134,8 @@ def _parse_monthly_working_state(raw_json: str) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _monthly_redirect_response(*, year_month: str, language: str):
+def _monthly_redirect_response(*, year_month: str):
     query = {"year_month": year_month}
-    if language:
-        query["language"] = language
     return redirect(f"{reverse('ui_monthly')}?{urlencode(query)}")
 
 
@@ -218,7 +193,6 @@ def _store_monthly_working_state(context: dict, *, people_grid, weekly_rest_warn
 def _build_preview_data_from_working_state(
     *,
     year_month: str,
-    language: str,
     leave_requests: dict,
     working_state: dict,
 ) -> dict:
@@ -233,7 +207,6 @@ def _build_preview_data_from_working_state(
         data=json.dumps(
             {
                 "year_month": year_month,
-                "language": language,
                 "leave_requests": leave_requests,
             }
         ),
@@ -281,15 +254,6 @@ def ui_monthly(request):
         transient_state = _consume_monthly_ui_transient_state(request, year_month=year_month)
         workspace_notice = _consume_monthly_ui_notice(request, year_month=year_month)
 
-    language = (
-        request.POST.get("language", "en")
-        if request.method == "POST"
-        else str(
-            (transient_state or {}).get("language")
-            or request.GET.get("language")
-            or "en"
-        )
-    )
     leave_requests_raw = (
         request.POST.get("leave_requests", "{}")
         if request.method == "POST"
@@ -324,7 +288,7 @@ def ui_monthly(request):
     )
     action = request.POST.get("action", "")
 
-    tr = _translation_pack(language)
+    tr = _translation_pack()
     t_pack = dict(tr["t"])
     t_pack.setdefault("refine_title", "Refine Schedule")
     t_pack.setdefault("refine_help", "Input natural-language schedule adjustments, then preview diff before apply/save.")
@@ -351,46 +315,12 @@ def ui_monthly(request):
     t_pack.setdefault("refine_parse_failed", "Refine parse failed")
     t_pack.setdefault("no_diff", "No changes detected.")
     t_pack.setdefault("no_refine_result_yet", "No refine result yet")
-    for key, value in _voice_translation_pack(tr["lang"]).items():
+    for key, value in _voice_translation_pack().items():
         t_pack.setdefault(key, value)
-
-    ui_translations = json.loads(tr["translations_json"])
-    for lang, pack in ui_translations.items():
-        pack.setdefault("refine_title", "Refine Schedule")
-        pack.setdefault("refine_help", "Input natural-language schedule adjustments, then preview diff before apply/save.")
-        pack.setdefault("refine_semantics_help", "Input natural-language schedule adjustments, preview the candidate diff, then Apply it to update the working state. Save persists the current workspace.")
-        pack.setdefault("refine_text_label", "Refine Text")
-        pack.setdefault("refine_preview", "Refine Preview")
-        pack.setdefault("action_semantics", "Preview rebuilds from canonical inputs. Refine Preview shows candidate changes. Apply updates current working state. Save persists the current state used by Export CSV.")
-        pack.setdefault("apply_label", "Apply")
-        pack.setdefault("apply_disabled_help", "Run Refine Preview before Apply.")
-        pack.setdefault("save_label", "Save")
-        pack.setdefault("save_help", "Save persists the current working state for this month.")
-        pack.setdefault("workspace_saved_notice", "Saved current workspace.")
-        pack.setdefault("workspace_restored_notice", "Restored saved workspace for ")
-        pack.setdefault("save_requires_workspace", "Save requires a current workspace. Run Preview or Apply first.")
-        pack.setdefault("save_failed", "Unable to save current workspace.")
-        pack.setdefault("diff_preview", "Diff Preview")
-        pack.setdefault("shift_legend", "Shift Legend")
-        pack.setdefault("refine_candidate_notice", "Showing a refine candidate only. Export CSV still uses the current working state until you Apply.")
-        pack.setdefault("refine_applied_notice", "This refine result is applied to the current working state used by Export CSV.")
-        pack.setdefault("apply_notice", "Applied to current working state.")
-        pack.setdefault("apply_succeeded", "Applied to current working state.")
-        pack.setdefault("apply_done", pack["apply_succeeded"])
-        pack.setdefault("refine_failed", "Refine preview failed.")
-        pack.setdefault("refine_parse_failed", "Refine parse failed")
-        pack.setdefault("no_diff", "No changes detected.")
-        pack.setdefault("no_refine_result_yet", "No refine result yet")
-        for key, value in _voice_translation_pack(lang).items():
-            pack.setdefault(key, value)
-
     t_pack["export_csv"] = "Export CSV"
-    for lang, pack in ui_translations.items():
-        pack["export_csv"] = "Export CSV"
 
     context = {
         "year_month": year_month,
-        "language": tr["lang"],
         "leave_requests_raw": leave_requests_raw,
         "refine_text": refine_text,
         "refine_preview_json": refine_preview_raw,
@@ -403,7 +333,7 @@ def ui_monthly(request):
         "workspace_notice": workspace_notice,
         "error_message": "",
         "t": t_pack,
-        "ui_translations_json": json.dumps(ui_translations, ensure_ascii=False),
+        "ui_strings_json": json.dumps(t_pack, ensure_ascii=False),
     }
 
     if request.method == "GET" and transient_state is not None:
@@ -415,7 +345,6 @@ def ui_monthly(request):
         context["working_state_json"] = json.dumps(working_state, ensure_ascii=False)
         context["preview_data"] = _build_preview_data_from_working_state(
             year_month=year_month,
-            language=context["language"],
             leave_requests=leave_requests,
             working_state=working_state,
         )
@@ -432,7 +361,6 @@ def ui_monthly(request):
 
         payload = {
             "year_month": year_month,
-            "language": context["language"],
             "leave_requests": leave_requests,
         }
 
@@ -460,10 +388,7 @@ def ui_monthly(request):
                     warnings=preview_data.get("warnings", []),
                 )
                 _stash_monthly_ui_transient_state(request, context)
-                return _monthly_redirect_response(
-                    year_month=year_month,
-                    language=context["language"],
-                )
+                return _monthly_redirect_response(year_month=year_month)
             else:
                 try:
                     err = json.loads(api_response.content.decode("utf-8"))
@@ -521,10 +446,7 @@ def ui_monthly(request):
                     else:
                         context["error_message"] = context["t"]["refine_parse_failed"]
                 _stash_monthly_ui_transient_state(request, context)
-                return _monthly_redirect_response(
-                    year_month=year_month,
-                    language=context["language"],
-                )
+                return _monthly_redirect_response(year_month=year_month)
             else:
                 try:
                     err = json.loads(api_response.content.decode("utf-8"))
@@ -572,10 +494,7 @@ def ui_monthly(request):
                 )
                 context["apply_notice"] = context["t"]["apply_notice"]
                 _stash_monthly_ui_transient_state(request, context)
-                return _monthly_redirect_response(
-                    year_month=year_month,
-                    language=context["language"],
-                )
+                return _monthly_redirect_response(year_month=year_month)
             else:
                 context["error_message"] = context["t"]["refine_failed"]
 
@@ -586,7 +505,6 @@ def ui_monthly(request):
             else:
                 context["preview_data"] = _build_preview_data_from_working_state(
                     year_month=year_month,
-                    language=context["language"],
                     leave_requests=leave_requests,
                     working_state=working_state,
                 )
@@ -611,7 +529,6 @@ def ui_monthly(request):
                         context["working_state_json"] = json.dumps(saved_working_state, ensure_ascii=False)
                         context["preview_data"] = _build_preview_data_from_working_state(
                             year_month=year_month,
-                            language=context["language"],
                             leave_requests=saved_leave_requests,
                             working_state=saved_working_state,
                         )
@@ -621,10 +538,7 @@ def ui_monthly(request):
                         year_month=year_month,
                         message=context["workspace_notice"],
                     )
-                    return _monthly_redirect_response(
-                        year_month=year_month,
-                        language=context["language"],
-                    )
+                    return _monthly_redirect_response(year_month=year_month)
                 else:
                     try:
                         err = json.loads(api_response.content.decode("utf-8"))

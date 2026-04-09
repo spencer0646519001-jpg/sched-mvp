@@ -154,28 +154,6 @@ textarea {
   min-height: 1.2em;
 }
 
-.lang-toggle {
-  display: inline-flex;
-  border: 1px solid var(--maple-line);
-  border-radius: 999px;
-  background: #fff7f0;
-  overflow: hidden;
-}
-
-.lang-btn {
-  border: 0;
-  background: transparent;
-  color: var(--maple-muted);
-  padding: 8px 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.lang-btn.is-active {
-  background: var(--maple-primary);
-  color: #fff;
-}
-
 .actions {
   display: flex;
   flex-direction: column;

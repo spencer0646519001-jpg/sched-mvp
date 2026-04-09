@@ -18,7 +18,6 @@ def test_monthly_export_csv_success():
 
     payload = {
         "year_month": "2025-11",
-        "language": "ja",
         "leave_requests": {"Spencer": ["2025-11-05"]},
     }
 
@@ -70,7 +69,6 @@ def test_monthly_export_csv_applies_leave_requests(monkeypatch):
 
     payload = {
         "year_month": "2025-11",
-        "language": "ja",
         "leave_requests": {"Spencer": [date_str]},
     }
 
@@ -104,7 +102,6 @@ def test_monthly_export_csv_uses_provided_working_people_grid(monkeypatch):
     date_str = "2025-11-05"
     payload = {
         "year_month": "2025-11",
-        "language": "ja",
         "leave_requests": {},
         "working_people_grid": {
             "year_month": "2025-11",

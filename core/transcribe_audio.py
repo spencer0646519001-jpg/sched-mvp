@@ -4,7 +4,7 @@ from typing import Any
 
 
 DEFAULT_TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe"
-SUPPORTED_TRANSCRIBE_LANGUAGES = {"ja", "zh", "en"}
+SUPPORTED_TRANSCRIBE_LANGUAGES = {"en"}
 
 
 class AudioTranscriptionError(RuntimeError):

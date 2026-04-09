@@ -11,7 +11,6 @@ def serialize_monthly_workspace(workspace: MonthlyWorkspace) -> dict[str, Any]:
     return {
         "tenant_name": workspace.tenant.name,
         "year_month": workspace.year_month,
-        "language": workspace.language,
         "leave_requests": dict(workspace.leave_requests or {}),
         "working_state": dict(workspace.working_state or {}),
         "revision": int(workspace.revision),
@@ -35,7 +34,6 @@ def save_monthly_workspace(
     *,
     tenant_name: str,
     year_month: str,
-    language: str,
     leave_requests: dict[str, list[str]],
     working_state: dict[str, Any],
 ) -> dict[str, Any]:
@@ -44,20 +42,17 @@ def save_monthly_workspace(
         tenant=tenant,
         year_month=year_month,
         defaults={
-            "language": language,
             "leave_requests": dict(leave_requests or {}),
             "working_state": dict(working_state or {}),
             "revision": 1,
         },
     )
     if not created:
-        workspace.language = language
         workspace.leave_requests = dict(leave_requests or {})
         workspace.working_state = dict(working_state or {})
         workspace.revision = int(workspace.revision) + 1
         workspace.save(
             update_fields=[
-                "language",
                 "leave_requests",
                 "working_state",
                 "revision",

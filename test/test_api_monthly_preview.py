@@ -17,7 +17,6 @@ def test_monthly_preview_success_shape_and_off_code():
 
     payload = {
         "year_month": "2025-11",
-        "language": "ja",
         "leave_requests": {
             "Spencer": ["2025-11-05"],
         },
@@ -35,7 +34,7 @@ def test_monthly_preview_success_shape_and_off_code():
     data = json.loads(response.content.decode("utf-8"))
 
     assert data["meta"]["month_start"] == "2025-11-01"
-    assert data["meta"]["language"] == "ja"
+    assert "language" not in data["meta"]
     assert "2025-11-05" in data["dates"]
     assert "Spencer" in data["grid"]
     assert data["grid"]["Spencer"]["2025-11-05"]["code"] == "OFF"

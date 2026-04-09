@@ -26,7 +26,7 @@ That page is a server-rendered Django form that internally calls these Django AP
 
 Current flow:
 
-1. `core/ui_views.py` builds a request payload from `year_month`, `language`, `leave_requests`, and optional `refine_text`.
+1. `core/ui_views.py` builds a request payload from `year_month`, `leave_requests`, and optional `refine_text`.
 2. The page uses `RequestFactory` to call the monthly Django API views in-process.
 3. `core/api_views.py` builds a month preview from a shared monthly input contract, then chunks through `app/generate_week.py`, which in turn calls `app/generate_day.py`.
 4. `refine` produces a preview diff and a preview grid only.
@@ -41,6 +41,7 @@ Current flow:
 - Canonical daily, graph, and monthly demo scheduling paths now resolve those inputs through `app/infra/engine_input_resolver.py`.
 - The resolver is intentionally honest: `demo_kitchen` is the only supported canonical scheduling tenant today, and unsupported tenant names fail instead of silently reusing demo fixtures.
 - `app/infra/monthly_scheduling_inputs.py` assembles the monthly demo input contract as JSON engine inputs plus DB-backed overlays/read-path support plus request leave state.
+- Reviewer-facing monthly/demo language behavior is intentionally English-only; legacy `language` request fields are ignored rather than persisted or treated as real multilingual support.
 - Raw JSON loading still lives in `app/infra/engine_inputs.py`, with some direct `load_json(...)` calls remaining in legacy/parity helpers and non-scheduling UI lookup helpers.
 - Leave requests in the monthly demo are still request payload input layered on top of those JSON fixtures and persisted only as part of the monthly workspace document when the user saves.
 - Natural-language monthly refine now operates on the current working state when one exists, but that still does not make monthly scheduling DB-canonical.

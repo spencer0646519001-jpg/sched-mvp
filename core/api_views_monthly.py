@@ -34,6 +34,9 @@ from core.shift_defs import (
 from core.transcribe_audio import AudioTranscriptionError, transcribe_uploaded_audio
 
 
+ENGLISH_ONLY_LANGUAGE = "en"
+
+
 @require_http_methods(["GET"])
 def api_week_mirror(request):
     start_date = request.GET.get("start_date", "2025-11-10")
@@ -588,7 +591,6 @@ def plan_to_people_grid(month_state, scheduling_inputs):
         "meta": {
             "month_start": month_state.get("month_start"),
             "month_end": month_state.get("month_end"),
-            "language": month_state.get("language", "ja"),
         },
         "dates": dates,
         "people": people,
@@ -619,10 +621,9 @@ def api_monthly_preview_mirror(request):
     if leave_err:
         return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
 
-    language = payload.get("language") or "ja"
     scheduling_inputs = build_monthly_scheduling_inputs(
         start_date=start_date,
-        language=language,
+        language=ENGLISH_ONLY_LANGUAGE,
         leave_requests=leave_requests,
         leave_by_date=leave_by_date,
     )
@@ -655,7 +656,7 @@ def api_monthly_export_csv(request):
         return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
     scheduling_inputs = build_monthly_scheduling_inputs(
         start_date=start_date,
-        language=payload.get("language") or "ja",
+        language=ENGLISH_ONLY_LANGUAGE,
         leave_requests=leave_requests,
         leave_by_date=leave_by_date,
     )
@@ -712,7 +713,6 @@ def api_monthly_workspace_save(request):
     workspace = monthly_workspace_persistence.save_monthly_workspace(
         tenant_name="demo_kitchen",
         year_month=validated_year_month,
-        language=str(payload.get("language") or "ja"),
         leave_requests=leave_requests,
         working_state=working_state,
     )
@@ -734,10 +734,8 @@ def api_monthly_transcribe(request):
             status=400,
         )
 
-    language = str(request.POST.get("language") or "").strip().lower() or None
-
     try:
-        text = transcribe_uploaded_audio(audio_file, language=language)
+        text = transcribe_uploaded_audio(audio_file, language=ENGLISH_ONLY_LANGUAGE)
     except AudioTranscriptionError as exc:
         return JsonResponse(
             {"ok": False, "detail": str(exc)},
@@ -767,7 +765,7 @@ def api_monthly_refine_mirror(request):
     if leave_err:
         return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
 
-    language = _normalize_refine_language(payload.get("language") or "ja")
+    language = ENGLISH_ONLY_LANGUAGE
     year_month = str(payload.get("year_month") or "")
     refine_text = str(payload.get("refine_text") or "")
     working_state = payload.get("working_state")

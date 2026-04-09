@@ -44,7 +44,6 @@ def test_monthly_workspace_save_persists_valid_working_state():
 
     payload = {
         "year_month": "2040-01",
-        "language": "en",
         "leave_requests": {"Spencer": ["2040-01-05"]},
         "working_state": _working_state("OFF", year_month="2040-01", date_str="2040-01-05", note="saved"),
     }
@@ -67,7 +66,6 @@ def test_monthly_workspace_save_persists_valid_working_state():
 
     saved = load_monthly_workspace(tenant_name="demo_kitchen", year_month="2040-01")
     assert saved is not None
-    assert saved["language"] == "en"
     assert saved["leave_requests"] == {"Spencer": ["2040-01-05"]}
     assert saved["working_state"]["people_grid"]["rows"][0]["cells"][0]["code"] == "OFF"
 
@@ -78,7 +76,6 @@ def test_monthly_workspace_save_requires_working_state():
 
     payload = {
         "year_month": "2040-02",
-        "language": "en",
         "leave_requests": {},
     }
 
@@ -101,13 +98,11 @@ def test_monthly_workspace_save_overwrites_same_month_and_increments_revision():
 
     first_payload = {
         "year_month": "2040-03",
-        "language": "en",
         "leave_requests": {},
         "working_state": _working_state("D", year_month="2040-03", date_str="2040-03-05"),
     }
     second_payload = {
         "year_month": "2040-03",
-        "language": "ja",
         "leave_requests": {"Kim": ["2040-03-02"]},
         "working_state": _working_state("OFF", year_month="2040-03", date_str="2040-03-05", note="updated"),
     }
@@ -134,6 +129,5 @@ def test_monthly_workspace_save_overwrites_same_month_and_increments_revision():
 
     saved = load_monthly_workspace(tenant_name="demo_kitchen", year_month="2040-03")
     assert saved is not None
-    assert saved["language"] == "ja"
     assert saved["leave_requests"] == {"Kim": ["2040-03-02"]}
     assert saved["working_state"]["people_grid"]["rows"][0]["cells"][0]["code"] == "OFF"

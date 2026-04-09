@@ -46,7 +46,7 @@ def test_build_monthly_scheduling_inputs_prefers_db_roles_for_monthly_roster(mon
 
     result = monthly_inputs.build_monthly_scheduling_inputs(
         start_date="2025-11-01",
-        language="ja",
+        language="en",
         leave_requests={"Spencer": ["2025-11-05"]},
         leave_by_date={"2025-11-05": ["Spencer"]},
         tenant_name="demo_kitchen",
@@ -86,7 +86,7 @@ def test_build_monthly_scheduling_inputs_falls_back_to_json_roles_when_db_unavai
 
     result = monthly_inputs.build_monthly_scheduling_inputs(
         start_date="2025-11-01",
-        language="ja",
+        language="en",
         leave_requests={},
         leave_by_date={},
         tenant_name="demo_kitchen",
@@ -140,7 +140,7 @@ def test_build_monthly_scheduling_inputs_overlays_db_station_skills_with_per_per
 
     result = monthly_inputs.build_monthly_scheduling_inputs(
         start_date="2025-11-01",
-        language="ja",
+        language="en",
         leave_requests={},
         leave_by_date={},
         tenant_name="demo_kitchen",
@@ -232,7 +232,7 @@ def test_build_monthly_scheduling_inputs_attaches_station_metadata_overlay_witho
 
     result = monthly_inputs.build_monthly_scheduling_inputs(
         start_date="2025-11-01",
-        language="ja",
+        language="en",
         leave_requests={},
         leave_by_date={},
         tenant_name="demo_kitchen",
@@ -295,7 +295,7 @@ def test_build_monthly_scheduling_inputs_attaches_shift_metadata_overlay_without
 
     result = monthly_inputs.build_monthly_scheduling_inputs(
         start_date="2025-11-01",
-        language="ja",
+        language="en",
         leave_requests={},
         leave_by_date={},
         tenant_name="demo_kitchen",

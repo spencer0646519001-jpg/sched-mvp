@@ -26,7 +26,7 @@ STATION_ALIASES = {
     "oven": "gateau",
 }
 
-SYSTEM_PROMPT = """You are a strict multilingual parser for monthly schedule refine commands.
+SYSTEM_PROMPT = """You are a strict parser for monthly schedule refine commands.
 Your only job: convert a user's natural language refine request into structured JSON command(s).
 
 Hard requirements:

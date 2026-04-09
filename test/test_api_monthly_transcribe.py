@@ -33,7 +33,7 @@ def test_monthly_transcribe_success_returns_ok_and_text(monkeypatch):
     assert response.status_code == 200
     data = json.loads(response.content.decode("utf-8"))
     assert data == {"ok": True, "text": "Spencer 2026-03-12 OFF"}
-    assert captured["language"] == "ja"
+    assert captured["language"] == "en"
     assert captured["name"] == "voice.webm"
 
 
@@ -48,7 +48,7 @@ def test_monthly_transcribe_failure_returns_ok_false(monkeypatch):
     audio = SimpleUploadedFile("voice.webm", b"fake-audio", content_type="audio/webm")
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
         client = Client()
-        response = client.post("/api/monthly/transcribe", data={"audio": audio, "language": "en"})
+        response = client.post("/api/monthly/transcribe", data={"audio": audio, "language": "ja"})
 
     assert response.status_code == 502
     data = json.loads(response.content.decode("utf-8"))
