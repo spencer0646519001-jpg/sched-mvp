@@ -10,6 +10,7 @@ services:
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-127.0.0.1,localhost,0.0.0.0,web}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_REFINE_MODEL: ${OPENAI_REFINE_MODEL:-}
+      OPENAI_TRANSCRIBE_MODEL: ${OPENAI_TRANSCRIBE_MODEL:-}
     volumes:
       - .:/app
       - ./db.sqlite3:/app/db.sqlite3
