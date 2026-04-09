@@ -3,6 +3,7 @@
 import csv
 import io
 import re
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 from dateutil import parser as dtparser
@@ -35,6 +36,20 @@ from core.transcribe_audio import AudioTranscriptionError, transcribe_uploaded_a
 
 
 ENGLISH_ONLY_LANGUAGE = "en"
+
+
+@dataclass(frozen=True)
+class MonthlyJsonOperationResult:
+    payload: dict
+    status_code: int
+
+
+@dataclass(frozen=True)
+class MonthlyCsvOperationResult:
+    status_code: int
+    csv_body: str | None = None
+    filename: str | None = None
+    error_payload: dict | None = None
 
 
 @require_http_methods(["GET"])
@@ -500,6 +515,143 @@ def _resolve_monthly_export_people_grid(payload: dict, scheduling_inputs) -> dic
     )
 
 
+def execute_monthly_preview(payload: dict) -> MonthlyJsonOperationResult:
+    start_date, date_err = _validate_year_month(payload.get("year_month"))
+    if date_err:
+        return MonthlyJsonOperationResult(payload={"detail": date_err}, status_code=400)
+
+    leave_requests, leave_by_date, leave_err = _validate_leave_requests(payload.get("leave_requests"))
+    if leave_err:
+        return MonthlyJsonOperationResult(payload={"detail": leave_err}, status_code=400)
+
+    scheduling_inputs = build_monthly_scheduling_inputs(
+        start_date=start_date,
+        language=ENGLISH_ONLY_LANGUAGE,
+        leave_requests=leave_requests,
+        leave_by_date=leave_by_date,
+    )
+
+    try:
+        result = monthly_workspace_service.build_monthly_preview_payload(
+            scheduling_inputs,
+            hooks=_monthly_workspace_hooks(),
+        )
+    except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
+        return MonthlyJsonOperationResult(payload={"detail": str(exc)}, status_code=500)
+
+    return MonthlyJsonOperationResult(payload=result, status_code=200)
+
+
+def execute_monthly_export_csv(payload: dict) -> MonthlyCsvOperationResult:
+    start_date, date_err = _validate_year_month(payload.get("year_month"))
+    if date_err:
+        return MonthlyCsvOperationResult(status_code=400, error_payload={"detail": date_err})
+    validated_year_month = datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m")
+
+    leave_requests, leave_by_date, leave_err = _validate_leave_requests(payload.get("leave_requests"))
+    if leave_err:
+        return MonthlyCsvOperationResult(status_code=400, error_payload={"detail": leave_err})
+
+    scheduling_inputs = build_monthly_scheduling_inputs(
+        start_date=start_date,
+        language=ENGLISH_ONLY_LANGUAGE,
+        leave_requests=leave_requests,
+        leave_by_date=leave_by_date,
+    )
+
+    try:
+        csv_body = monthly_workspace_service.build_monthly_export_csv(
+            payload,
+            scheduling_inputs,
+            hooks=_monthly_workspace_hooks(),
+        )
+    except ValueError as exc:
+        return MonthlyCsvOperationResult(status_code=400, error_payload={"detail": str(exc)})
+    except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
+        return MonthlyCsvOperationResult(status_code=500, error_payload={"detail": str(exc)})
+
+    return MonthlyCsvOperationResult(
+        status_code=200,
+        csv_body=csv_body,
+        filename=f"monthly_{validated_year_month}.csv",
+    )
+
+
+def execute_monthly_workspace_save(payload: dict) -> MonthlyJsonOperationResult:
+    start_date, date_err = _validate_year_month(payload.get("year_month"))
+    if date_err:
+        return MonthlyJsonOperationResult(payload={"detail": date_err}, status_code=400)
+    validated_year_month = datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m")
+
+    leave_requests, _, leave_err = _validate_leave_requests(payload.get("leave_requests"))
+    if leave_err:
+        return MonthlyJsonOperationResult(payload={"detail": leave_err}, status_code=400)
+
+    working_state = payload.get("working_state")
+    if working_state is None:
+        return MonthlyJsonOperationResult(
+            payload={"detail": "Current monthly working state is required to save."},
+            status_code=400,
+        )
+    if not monthly_workspace_service.is_valid_monthly_working_state(
+        working_state,
+        hooks=_monthly_workspace_hooks(),
+    ):
+        return MonthlyJsonOperationResult(
+            payload={"detail": "Invalid 'working_state' payload."},
+            status_code=400,
+        )
+
+    workspace = monthly_workspace_persistence.save_monthly_workspace(
+        tenant_name="demo_kitchen",
+        year_month=validated_year_month,
+        leave_requests=leave_requests,
+        working_state=working_state,
+    )
+    return MonthlyJsonOperationResult(
+        payload={"ok": True, "workspace": workspace},
+        status_code=200,
+    )
+
+
+def execute_monthly_refine(payload: dict) -> MonthlyJsonOperationResult:
+    start_date, date_err = _validate_year_month(payload.get("year_month"))
+    if date_err:
+        return MonthlyJsonOperationResult(payload={"detail": date_err}, status_code=400)
+
+    leave_requests, leave_by_date, leave_err = _validate_leave_requests(payload.get("leave_requests"))
+    if leave_err:
+        return MonthlyJsonOperationResult(payload={"detail": leave_err}, status_code=400)
+
+    language = ENGLISH_ONLY_LANGUAGE
+    year_month = str(payload.get("year_month") or "")
+    refine_text = str(payload.get("refine_text") or "")
+    working_state = payload.get("working_state")
+    scheduling_inputs = build_monthly_scheduling_inputs(
+        start_date=start_date,
+        language=language,
+        leave_requests=leave_requests,
+        leave_by_date=leave_by_date,
+    )
+
+    try:
+        result = monthly_workspace_service.refine_monthly_workspace(
+            scheduling_inputs=scheduling_inputs,
+            year_month=year_month,
+            start_date=start_date,
+            language=language,
+            refine_text=refine_text,
+            working_state=working_state,
+            hooks=_monthly_workspace_hooks(),
+        )
+    except ValueError as exc:
+        return MonthlyJsonOperationResult(payload={"detail": str(exc)}, status_code=400)
+    except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
+        return MonthlyJsonOperationResult(payload={"detail": str(exc)}, status_code=500)
+
+    return MonthlyJsonOperationResult(payload=result.payload, status_code=result.status_code)
+
+
 def plan_to_people_grid(month_state, scheduling_inputs):
     plan = month_state.get("plan", {}) or {}
     dates = sorted(plan.keys())
@@ -612,31 +764,12 @@ def api_monthly_preview_mirror(request):
     payload, payload_err = _parse_request_payload(request)
     if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
-
-    start_date, date_err = _validate_year_month(payload.get("year_month"))
-    if date_err:
-        return JsonResponse({"detail": date_err}, json_dumps_params={"ensure_ascii": False}, status=400)
-
-    leave_requests, leave_by_date, leave_err = _validate_leave_requests(payload.get("leave_requests"))
-    if leave_err:
-        return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
-
-    scheduling_inputs = build_monthly_scheduling_inputs(
-        start_date=start_date,
-        language=ENGLISH_ONLY_LANGUAGE,
-        leave_requests=leave_requests,
-        leave_by_date=leave_by_date,
+    result = execute_monthly_preview(payload)
+    return JsonResponse(
+        result.payload,
+        json_dumps_params={"ensure_ascii": False},
+        status=result.status_code,
     )
-
-    try:
-        result = monthly_workspace_service.build_monthly_preview_payload(
-            scheduling_inputs,
-            hooks=_monthly_workspace_hooks(),
-        )
-    except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
-        return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
-
-    return JsonResponse(result, json_dumps_params={"ensure_ascii": False}, status=200)
 
 
 @csrf_exempt
@@ -645,35 +778,16 @@ def api_monthly_export_csv(request):
     payload, payload_err = _parse_request_payload(request)
     if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
-
-    start_date, date_err = _validate_year_month(payload.get("year_month"))
-    if date_err:
-        return JsonResponse({"detail": date_err}, json_dumps_params={"ensure_ascii": False}, status=400)
-    validated_year_month = datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m")
-
-    leave_requests, leave_by_date, leave_err = _validate_leave_requests(payload.get("leave_requests"))
-    if leave_err:
-        return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
-    scheduling_inputs = build_monthly_scheduling_inputs(
-        start_date=start_date,
-        language=ENGLISH_ONLY_LANGUAGE,
-        leave_requests=leave_requests,
-        leave_by_date=leave_by_date,
-    )
-
-    try:
-        csv_body = monthly_workspace_service.build_monthly_export_csv(
-            payload,
-            scheduling_inputs,
-            hooks=_monthly_workspace_hooks(),
+    result = execute_monthly_export_csv(payload)
+    if result.status_code != 200:
+        return JsonResponse(
+            result.error_payload or {"detail": "CSV export failed."},
+            json_dumps_params={"ensure_ascii": False},
+            status=result.status_code,
         )
-    except ValueError as exc:
-        return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=400)
-    except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
-        return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
 
-    response = HttpResponse(csv_body, content_type="text/csv; charset=utf-8")
-    response["Content-Disposition"] = f'attachment; filename="monthly_{validated_year_month}.csv"'
+    response = HttpResponse(result.csv_body, content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{result.filename}"'
     return response
 
 
@@ -683,43 +797,11 @@ def api_monthly_workspace_save(request):
     payload, payload_err = _parse_request_payload(request)
     if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
-
-    start_date, date_err = _validate_year_month(payload.get("year_month"))
-    if date_err:
-        return JsonResponse({"detail": date_err}, json_dumps_params={"ensure_ascii": False}, status=400)
-    validated_year_month = datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m")
-
-    leave_requests, _, leave_err = _validate_leave_requests(payload.get("leave_requests"))
-    if leave_err:
-        return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
-
-    working_state = payload.get("working_state")
-    if working_state is None:
-        return JsonResponse(
-            {"detail": "Current monthly working state is required to save."},
-            json_dumps_params={"ensure_ascii": False},
-            status=400,
-        )
-    if not monthly_workspace_service.is_valid_monthly_working_state(
-        working_state,
-        hooks=_monthly_workspace_hooks(),
-    ):
-        return JsonResponse(
-            {"detail": "Invalid 'working_state' payload."},
-            json_dumps_params={"ensure_ascii": False},
-            status=400,
-        )
-
-    workspace = monthly_workspace_persistence.save_monthly_workspace(
-        tenant_name="demo_kitchen",
-        year_month=validated_year_month,
-        leave_requests=leave_requests,
-        working_state=working_state,
-    )
+    result = execute_monthly_workspace_save(payload)
     return JsonResponse(
-        {"ok": True, "workspace": workspace},
+        result.payload,
         json_dumps_params={"ensure_ascii": False},
-        status=200,
+        status=result.status_code,
     )
 
 
@@ -756,41 +838,7 @@ def api_monthly_refine_mirror(request):
     payload, payload_err = _parse_request_payload(request)
     if payload_err:
         return JsonResponse(payload_err, json_dumps_params={"ensure_ascii": False}, status=400)
-
-    start_date, date_err = _validate_year_month(payload.get("year_month"))
-    if date_err:
-        return JsonResponse({"detail": date_err}, json_dumps_params={"ensure_ascii": False}, status=400)
-
-    leave_requests, leave_by_date, leave_err = _validate_leave_requests(payload.get("leave_requests"))
-    if leave_err:
-        return JsonResponse({"detail": leave_err}, json_dumps_params={"ensure_ascii": False}, status=400)
-
-    language = ENGLISH_ONLY_LANGUAGE
-    year_month = str(payload.get("year_month") or "")
-    refine_text = str(payload.get("refine_text") or "")
-    working_state = payload.get("working_state")
-    scheduling_inputs = build_monthly_scheduling_inputs(
-        start_date=start_date,
-        language=language,
-        leave_requests=leave_requests,
-        leave_by_date=leave_by_date,
-    )
-
-    try:
-        result = monthly_workspace_service.refine_monthly_workspace(
-            scheduling_inputs=scheduling_inputs,
-            year_month=year_month,
-            start_date=start_date,
-            language=language,
-            refine_text=refine_text,
-            working_state=working_state,
-            hooks=_monthly_workspace_hooks(),
-        )
-    except ValueError as exc:
-        return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=400)
-    except (ShiftDefsNotFound, ShiftDefsInvalid) as exc:
-        return JsonResponse({"detail": str(exc)}, json_dumps_params={"ensure_ascii": False}, status=500)
-
+    result = execute_monthly_refine(payload)
     return JsonResponse(
         result.payload,
         json_dumps_params={"ensure_ascii": False},

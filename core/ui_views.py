@@ -3,8 +3,8 @@ Server-rendered Django demo views.
 
 Reviewer notes:
 - `/ui/monthly` is the main monthly demo/review surface today.
-- The page does not call an external frontend app; it builds internal Django
-  requests and reuses the monthly API views in-process.
+- The page does not call an external frontend app; it stays server-rendered
+  while reusing the same monthly orchestration as the API adapters.
 - "Apply" updates the current request-scoped working state used for export.
 - "Save" persists the current monthly workspace state for later restoration.
 - Monthly helper names now reuse the canonical roster metadata read-path.
@@ -15,8 +15,8 @@ import json
 from datetime import date
 from urllib.parse import urlencode
 
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
-from django.test.client import RequestFactory
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
@@ -26,10 +26,10 @@ from app.infra.monthly_scheduling_inputs import (
 )
 from core import monthly_workspace_persistence, monthly_workspace_service
 from core.api_views_monthly import (
-    api_monthly_export_csv,
-    api_monthly_preview_mirror,
-    api_monthly_refine_mirror,
-    api_monthly_workspace_save,
+    execute_monthly_export_csv,
+    execute_monthly_preview,
+    execute_monthly_refine,
+    execute_monthly_workspace_save,
 )
 
 
@@ -201,25 +201,16 @@ def _build_preview_data_from_working_state(
         "weekly_rest_warnings": list(working_state.get("weekly_rest_warnings", [])),
         "warnings": list(working_state.get("warnings", [])),
     }
-    rf = RequestFactory()
-    internal_request = rf.post(
-        "/api/monthly/preview",
-        data=json.dumps(
-            {
-                "year_month": year_month,
-                "leave_requests": leave_requests,
-            }
-        ),
-        content_type="application/json",
+    preview_result = execute_monthly_preview(
+        {
+            "year_month": year_month,
+            "leave_requests": leave_requests,
+        }
     )
-    api_response = api_monthly_preview_mirror(internal_request)
-    if api_response.status_code != 200:
+    if preview_result.status_code != 200:
         return preview_data
 
-    try:
-        base_preview = json.loads(api_response.content.decode("utf-8"))
-    except json.JSONDecodeError:
-        return preview_data
+    base_preview = preview_result.payload
     if not isinstance(base_preview, dict):
         return preview_data
 
@@ -364,19 +355,10 @@ def ui_monthly(request):
             "leave_requests": leave_requests,
         }
 
-        # The demo UI reuses the Django monthly API views directly so reviewers
-        # can trace one request path without a separate frontend runtime.
-        rf = RequestFactory()
-
         if action == "preview":
-            internal_request = rf.post(
-                "/api/monthly/preview",
-                data=json.dumps(payload),
-                content_type="application/json",
-            )
-            api_response = api_monthly_preview_mirror(internal_request)
-            if api_response.status_code == 200:
-                preview_data = json.loads(api_response.content.decode("utf-8"))
+            preview_result = execute_monthly_preview(payload)
+            if preview_result.status_code == 200:
+                preview_data = preview_result.payload
                 context["preview_data"] = preview_data
                 context["refine_data"] = None
                 context["refine_preview_json"] = ""
@@ -390,11 +372,8 @@ def ui_monthly(request):
                 _stash_monthly_ui_transient_state(request, context)
                 return _monthly_redirect_response(year_month=year_month)
             else:
-                try:
-                    err = json.loads(api_response.content.decode("utf-8"))
-                    context["error_message"] = err.get("detail") or context["t"]["preview_failed"]
-                except json.JSONDecodeError:
-                    context["error_message"] = f"Preview failed (HTTP {api_response.status_code})."
+                err = preview_result.payload if isinstance(preview_result.payload, dict) else {}
+                context["error_message"] = err.get("detail") or context["t"]["preview_failed"]
 
         if action == "download":
             export_payload = dict(payload)
@@ -402,19 +381,16 @@ def ui_monthly(request):
             working_people_grid = working_state.get("people_grid")
             if isinstance(working_people_grid, dict):
                 export_payload["working_people_grid"] = working_people_grid
-            internal_request = rf.post(
-                "/api/monthly/export.csv",
-                data=json.dumps(export_payload),
-                content_type="application/json",
-            )
-            api_response = api_monthly_export_csv(internal_request)
-            if api_response.status_code == 200:
-                return api_response
-            try:
-                err = json.loads(api_response.content.decode("utf-8"))
+            export_result = execute_monthly_export_csv(export_payload)
+            if export_result.status_code == 200:
+                response = HttpResponse(export_result.csv_body, content_type="text/csv; charset=utf-8")
+                response["Content-Disposition"] = f'attachment; filename="{export_result.filename}"'
+                return response
+            err = export_result.error_payload if isinstance(export_result.error_payload, dict) else {}
+            if err:
                 context["error_message"] = err.get("detail") or context["t"]["csv_export_failed"]
-            except json.JSONDecodeError:
-                context["error_message"] = f"CSV export failed (HTTP {api_response.status_code})."
+            else:
+                context["error_message"] = context["t"]["csv_export_failed"]
 
         if action == "refine_preview":
             refine_payload = dict(payload)
@@ -422,14 +398,9 @@ def ui_monthly(request):
             working_state = _parse_monthly_working_state(working_state_raw)
             if isinstance(working_state.get("people_grid"), dict):
                 refine_payload["working_state"] = working_state
-            internal_request = rf.post(
-                "/api/monthly/refine",
-                data=json.dumps(refine_payload),
-                content_type="application/json",
-            )
-            api_response = api_monthly_refine_mirror(internal_request)
-            if api_response.status_code == 200:
-                refine_data = json.loads(api_response.content.decode("utf-8"))
+            refine_result = execute_monthly_refine(refine_payload)
+            if refine_result.status_code == 200:
+                refine_data = refine_result.payload
                 context["refine_data"] = refine_data
                 context["refine_preview_json"] = json.dumps(refine_data, ensure_ascii=False)
                 context["refine_applied"] = False
@@ -448,8 +419,8 @@ def ui_monthly(request):
                 _stash_monthly_ui_transient_state(request, context)
                 return _monthly_redirect_response(year_month=year_month)
             else:
-                try:
-                    err = json.loads(api_response.content.decode("utf-8"))
+                err = refine_result.payload if isinstance(refine_result.payload, dict) else {}
+                if err:
                     parse_errors = err.get("parse_errors") if isinstance(err, dict) else None
                     if isinstance(parse_errors, list) and parse_errors:
                         messages = [
@@ -464,8 +435,8 @@ def ui_monthly(request):
                             context["error_message"] = context["t"]["refine_parse_failed"]
                     else:
                         context["error_message"] = err.get("detail") or context["t"]["refine_failed"]
-                except json.JSONDecodeError:
-                    context["error_message"] = f"Refine failed (HTTP {api_response.status_code})."
+                else:
+                    context["error_message"] = context["t"]["refine_failed"]
 
         if action == "apply_refine":
             try:
@@ -510,18 +481,14 @@ def ui_monthly(request):
                 )
                 save_payload = dict(payload)
                 save_payload["working_state"] = working_state
-                internal_request = rf.post(
-                    "/api/monthly/workspace/save",
-                    data=json.dumps(save_payload),
-                    content_type="application/json",
-                )
-                api_response = api_monthly_workspace_save(internal_request)
-                if api_response.status_code == 200:
-                    try:
-                        save_result = json.loads(api_response.content.decode("utf-8"))
-                    except json.JSONDecodeError:
-                        save_result = {}
-                    workspace = save_result.get("workspace") if isinstance(save_result, dict) else {}
+                save_result = execute_monthly_workspace_save(save_payload)
+                if save_result.status_code == 200:
+                    save_payload_result = save_result.payload if isinstance(save_result.payload, dict) else {}
+                    workspace = (
+                        save_payload_result.get("workspace")
+                        if isinstance(save_payload_result, dict)
+                        else {}
+                    )
                     if isinstance(workspace, dict):
                         saved_leave_requests = dict(workspace.get("leave_requests") or leave_requests)
                         saved_working_state = dict(workspace.get("working_state") or working_state)
@@ -540,11 +507,11 @@ def ui_monthly(request):
                     )
                     return _monthly_redirect_response(year_month=year_month)
                 else:
-                    try:
-                        err = json.loads(api_response.content.decode("utf-8"))
+                    err = save_result.payload if isinstance(save_result.payload, dict) else {}
+                    if err:
                         context["error_message"] = err.get("detail") or context["t"]["save_failed"]
-                    except json.JSONDecodeError:
-                        context["error_message"] = f"Save failed (HTTP {api_response.status_code})."
+                    else:
+                        context["error_message"] = context["t"]["save_failed"]
 
     return render(request, "ui/monthly.html", context)
 

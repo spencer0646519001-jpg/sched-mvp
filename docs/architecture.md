@@ -17,7 +17,8 @@ This repository is a hiring-portfolio scheduling MVP for explainable kitchen sta
 
 The main reviewer/demo path is `/ui/monthly`.
 
-That page is a server-rendered Django form that internally calls these Django API views:
+That page is a server-rendered Django form. The monthly UI and monthly API adapters
+now share the same request-free orchestration for these backend operations:
 
 - `POST /api/monthly/preview`
 - `POST /api/monthly/refine`
@@ -27,8 +28,8 @@ That page is a server-rendered Django form that internally calls these Django AP
 Current flow:
 
 1. `core/ui_views.py` builds a request payload from `year_month`, `leave_requests`, and optional `refine_text`.
-2. The page uses `RequestFactory` to call the monthly Django API views in-process.
-3. `core/api_views.py` builds a month preview from a shared monthly input contract, then chunks through `app/generate_week.py`, which in turn calls `app/generate_day.py`.
+2. `core/ui_views.py` and `core/api_views_monthly.py` both call the same monthly orchestration helpers instead of the UI self-calling Django API views in-process.
+3. `core/api_views_monthly.py` builds a month preview from a shared monthly input contract, then chunks through `app/generate_week.py`, which in turn calls `app/generate_day.py`.
 4. `refine` produces a preview diff and a preview grid only.
 5. `Apply` updates the current in-page working state used for display/export.
 6. `Save` persists the current monthly workspace document for the tenant/month.

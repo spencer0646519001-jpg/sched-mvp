@@ -7,7 +7,6 @@ import re
 from types import SimpleNamespace
 
 import django
-from django.http import JsonResponse
 from django.test import Client
 from django.test.utils import override_settings
 
@@ -887,9 +886,10 @@ def test_ui_monthly_refine_action_copy_stays_clean_for_english_only_path():
 def test_ui_monthly_refine_preview_shows_fallback_parse_error(monkeypatch):
     _django_setup()
 
-    def _fake_refine_api(_request):
-        return JsonResponse(
-            {
+    monkeypatch.setattr(
+        "core.ui_views.execute_monthly_refine",
+        lambda _payload: SimpleNamespace(
+            payload={
                 "ok": False,
                 "detail": "Unable to understand refine command",
                 "parse_errors": [
@@ -900,11 +900,9 @@ def test_ui_monthly_refine_preview_shows_fallback_parse_error(monkeypatch):
                     }
                 ],
             },
-            status=400,
-            json_dumps_params={"ensure_ascii": False},
-        )
-
-    monkeypatch.setattr("core.ui_views.api_monthly_refine_mirror", _fake_refine_api)
+            status_code=400,
+        ),
+    )
 
     with override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"]):
         client = Client()
