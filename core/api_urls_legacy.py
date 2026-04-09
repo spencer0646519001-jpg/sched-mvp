@@ -18,10 +18,10 @@ from core.api_views_plan import (
     api_plan_patch_apply_mirror,
     api_plan_patch_preview_mirror,
 )
-from core.ui_views import ui_home
 
 urlpatterns = [
-    # Django compatibility/parity routes retained for review, testing, and rollback support.
+    # Django HTTP compatibility/parity routes retained for review, testing, and rollback support.
+    # Canonical UI stays under /ui/... rather than /api/legacy/...
     path("generate/day/<str:date>", generate_day_api_mirror, name="generate_day_api_mirror"),
     path("plan/create", api_plan_create_mirror, name="api_plan_create_mirror"),
     path("plan/patch_preview", api_plan_patch_preview_mirror, name="api_plan_patch_preview_mirror"),
@@ -36,5 +36,4 @@ urlpatterns = [
     path("month_csv", api_month_csv_mirror, name="api_month_csv_mirror"),
     path("calendar/month", api_calendar_month_mirror, name="api_calendar_month_mirror"),
     path("calendar/month_csv", api_calendar_month_csv_mirror, name="api_calendar_month_csv_mirror"),
-    path("ui/", ui_home, name="legacy_ui_home"),
 ]

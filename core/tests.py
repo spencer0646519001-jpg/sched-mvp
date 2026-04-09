@@ -37,6 +37,17 @@ def test_root_healthcheck_mirror_shape():
     assert resp.json() == {"status": "ok"}
 
 
+def test_legacy_api_namespace_does_not_expose_ui_home():
+    _django_setup()
+    client = Client()
+
+    legacy_resp = client.get("/api/legacy/ui/")
+    canonical_resp = client.get("/ui/")
+
+    assert legacy_resp.status_code == 404
+    assert canonical_resp.status_code == 200
+
+
 def test_generate_day_mirror_core_shape():
     _django_setup()
     client = Client()

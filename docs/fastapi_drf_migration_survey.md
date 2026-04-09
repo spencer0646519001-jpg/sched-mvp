@@ -1,7 +1,8 @@
-# FastAPI usage survey and DRF migration plan input
+# Archived FastAPI usage survey and DRF migration plan input
 
-This document is a historical FastAPI inventory, not the source of truth for the current Django route map.
-Canonical Django routes live under `/api/...` in `core/api_urls.py`, while retained Django parity routes now live under `/api/legacy/...` in `core/api_urls_legacy.py`.
+This document is archived migration context, not the source of truth for the current runtime or public route map.
+For current routing truth, follow `config/urls.py`, `core/api_urls.py`, `core/api_urls_legacy.py`, and `core/ui_urls.py`.
+Canonical Django routes live under `/api/...`, retained Django parity routes live under `/api/legacy/...`, and canonical UI routes live under `/ui/...`.
 
 Canonical baseline commit used for this survey: `90f09944170679d5385de7aa6470ac5c9da274c3`.
 

@@ -1,13 +1,15 @@
-# app/month_service.py
+"""Helpers retained for legacy calendar mirrors and the canonical daily-run write path."""
+
 from __future__ import annotations
+
 from app.domain.normalize import normalize_engine_assignments
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Optional
 from datetime import date, datetime, timedelta
 from app.generate_day import greedy_assign, greedy_assign_with_inputs
 from app.infra.engine_input_resolver import resolve_engine_inputs_for_tenant
-from app.infra.month_repo import build_station_map as build_station_map_repo
 
 from app.infra.schedule_run_repo import save_schedule_run_from_out as save_schedule_run_from_out_repo
+
 
 def _parse_date(s: str) -> date:
     return datetime.strptime(s, "%Y-%m-%d").date()
@@ -47,11 +49,11 @@ def build_month(start_date: str) -> Dict[str, Any]:
             )
 
             day_errors: List[str] = []
-            # greedy_assign 可能本來就有 errors（若沒有就忽略）
+            # Preserve engine-emitted errors when present.
             if isinstance(plan.get("errors"), list):
                 day_errors.extend([str(x) for x in plan.get("errors")])
 
-            # normalize_engine_assignments 回的是 list[dict]，先轉成可讀字串（先不改 errors schema）
+            # Keep normalization errors readable without changing the legacy payload shape.
             day_errors.extend([f"NORMALIZE:{e['type']}" for e in norm_errors])
 
             days.append(
@@ -86,7 +88,7 @@ def build_month(start_date: str) -> Dict[str, Any]:
 
 
 def _month_rows(days: List[Dict[str, Any]]) -> Dict[str, Any]:
-    # stations：把整月出現過的 station 統一列出（前端用來排欄位）
+    # Collect every station seen in the month so legacy calendar exports stay tabular.
     station_set = set()
     rows: List[Dict[str, Any]] = []
 
@@ -107,19 +109,6 @@ def _month_rows(days: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     stations = sorted(station_set)
     return {"rows": rows, "stations": stations}
-
-
-def build_station_map_from_db(tenant_name: str) -> Dict[str, List[str]]:
-    return build_station_map_repo(tenant_name)
-
-
-
-def assign_from_db(tenant_name: str, strategy: str = "mini_candidate") -> Tuple[Dict[str, str], List[str]]:
-    station_map = build_station_map_from_db(tenant_name)
-
-    # 用你現在真正存在的引擎：greedy_assign
-    schedule, warnings = greedy_assign(station_map, strategy=strategy)
-
 
 
 def save_schedule_run_from_out(
