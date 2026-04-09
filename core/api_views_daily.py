@@ -12,6 +12,7 @@ from app.infra.engine_input_resolver import (
     resolve_engine_inputs_for_tenant,
     supported_engine_input_tenants,
 )
+from app.infra.schedule_run_repo import DailyRunPersistenceFixtureError
 from app.infra.shift_metadata import load_shift_metadata_overlay, serialize_shift_metadata
 from app.infra.station_metadata import load_station_metadata_overlay, serialize_station_metadata
 from app.month_service import run_daily_schedule
@@ -34,6 +35,23 @@ def _unsupported_tenant_response(exc: UnsupportedEngineInputTenant) -> JsonRespo
         },
         json_dumps_params={"ensure_ascii": False},
         status=400,
+    )
+
+
+def _persistence_fixture_error_response(exc: DailyRunPersistenceFixtureError) -> JsonResponse:
+    payload_err = present_api_error(
+        code="persistence_fixtures_incomplete",
+        message="Daily-run persistence fixtures are incomplete for this tenant.",
+        details={
+            "tenant_name": exc.tenant_name,
+            "missing_station_codes": list(exc.missing_station_codes),
+            "missing_employee_names": list(exc.missing_employee_names),
+        },
+    )
+    return JsonResponse(
+        payload_err,
+        json_dumps_params={"ensure_ascii": False},
+        status=409,
     )
 
 
@@ -251,6 +269,8 @@ def create_daily_run(request, tenant_name: str):
         run = run_daily_schedule(tenant_name, date_str, absent=absent)
     except UnsupportedEngineInputTenant as exc:
         return _unsupported_tenant_response(exc)
+    except DailyRunPersistenceFixtureError as exc:
+        return _persistence_fixture_error_response(exc)
 
     # 4) build out (raw)
     out = build_out_from_run(run)

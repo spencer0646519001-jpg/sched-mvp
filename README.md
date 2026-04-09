@@ -73,9 +73,9 @@ python manage.py runserver 0.0.0.0:8000
 
 Notes:
 
-- `seed_demo` creates the `demo_kitchen` tenant used by the canonical demo paths.
+- `seed_demo` idempotently creates the `demo_kitchen` tenant plus the minimal canonical persistence fixtures used by the daily-run history path: 4 stations and the 12-person demo roster from `data/workers.json`.
 - The monthly demo flow is JSON-canonical, so it does not depend on the database being the scheduler source of truth.
-- The persisted daily-run write path is real, but it depends on tenant-scoped DB records for employees and stations in addition to the JSON-backed scheduler inputs.
+- The persisted daily-run write path is still driven by JSON-backed scheduler inputs; `seed_demo` only bootstraps the DB rows that path needs to save immutable run history on a fresh database.
 - If you want to inspect admin-backed overlays and history through Django Admin, create a superuser with `python manage.py createsuperuser`.
 
 Useful URLs:
@@ -123,7 +123,8 @@ Current CI path in `.github/workflows/tests.yml`:
 1. Set up Python 3.13.
 2. Install `requirements.txt`.
 3. Run `python manage.py migrate --noinput`.
-4. Run `python -m pytest -q`.
+4. Run `python test/bootstrap_smoke.py`.
+5. Run `python -m pytest -q`.
 
 ## What This Project Is / Is Not
 

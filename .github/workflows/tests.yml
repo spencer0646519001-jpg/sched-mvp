@@ -26,5 +26,8 @@ jobs:
       - name: Apply database migrations
         run: python manage.py migrate --noinput
 
+      - name: Run fresh-db bootstrap smoke proof
+        run: python test/bootstrap_smoke.py
+
       - name: Run default pytest suite
         run: python -m pytest -q
